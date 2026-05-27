@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mneti — Device Discovery Dashboard</title>
+    <style>
+        /* ── Base Styles ── */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #ffffff;
+            color: #212529;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            padding: 20px;
+        }
+
+        header {
+            border-bottom: 2px solid #333333;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: bold;
+            color: #111111;
+        }
+
+        .subtitle {
+            font-size: 12px;
+            color: #666666;
+            margin-top: 4px;
+        }
+
+        /* ── Layout ── */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            gap: 20px;
+        }
+
+        /* ── Navigation Panel ── */
+        .sidebar {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .sidebar-title {
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #495057;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 4px;
+            margin-bottom: 5px;
+        }
+
+        .nav-link {
+            display: block;
+            background: none;
+            border: none;
+            text-align: left;
+            padding: 8px 10px;
+            width: 100%;
+            cursor: pointer;
+            font-size: 13px;
+            color: #333333;
+            border-radius: 3px;
+            text-decoration: none;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            background-color: #e9ecef;
+            font-weight: bold;
+        }
+
+        /* ── Action Panels ── */
+        .panel-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .panel {
+            background-color: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333333;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #f1f1f1;
+            padding-bottom: 5px;
+        }
+
+        /* ── Forms and Inputs ── */
+        .form-group {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        input[type="text"],
+        select {
+            background-color: #ffffff;
+            border: 1px solid #ced4da;
+            border-radius: 3px;
+            color: #495057;
+            font-size: 13px;
+            padding: 6px 10px;
+            outline: none;
+            width: 100%;
+        }
+
+        input[type="text"]:focus,
+        select:focus {
+            border-color: #80bdff;
+        }
+
+        select {
+            width: auto;
+            min-width: 80px;
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            background-color: #f8f9fa;
+            border: 1px solid #ced4da;
+            border-radius: 3px;
+            color: #333333;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 6px 12px;
+            text-align: center;
+            white-space: nowrap;
+            outline: none;
+        }
+
+        .btn:hover {
+            background-color: #e2e6ea;
+            border-color: #dae0e5;
+        }
+
+        .btn-primary {
+            background-color: #343a40;
+            border-color: #343a40;
+            color: #ffffff;
+        }
+
+        .btn-primary:hover {
+            background-color: #23272b;
+            border-color: #1d2124;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* ── Stats Display ── */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-box {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 12px 15px;
+            text-align: center;
+        }
+
+        .stat-num {
+            font-size: 22px;
+            font-weight: bold;
+            color: #111111;
+        }
+
+        .stat-lbl {
+            font-size: 11px;
+            color: #6c757d;
+            text-transform: uppercase;
+            font-weight: bold;
+            margin-top: 2px;
+        }
+
+        /* ── Data Display ── */
+        .content-box {
+            background-color: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .box-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        /* ── Standard Table ── */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        th {
+            background-color: #e9ecef;
+            border-bottom: 2px solid #dee2e6;
+            color: #495057;
+            font-weight: bold;
+            text-align: left;
+            padding: 10px 15px;
+        }
+
+        td {
+            border-bottom: 1px solid #dee2e6;
+            padding: 10px 15px;
+            color: #333333;
+            vertical-align: middle;
+        }
+
+        tr:hover td {
+            background-color: #f1f3f5;
+        }
+
+        .mono {
+            font-family: Consolas, "Liberation Mono", Courier, monospace;
+        }
+
+        /* ── Badges ── */
+        .badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 2px;
+            border: 1px solid #ccc;
+            background-color: #f8f9fa;
+            color: #333333;
+        }
+
+        .badge-managed {
+            background-color: #e8f4fd;
+            border-color: #bbeeef;
+            color: #0366d6;
+        }
+
+        .badge-relayed {
+            background-color: #eef9f0;
+            border-color: #cce8cc;
+            color: #28a745;
+        }
+
+        .badge-unmanaged {
+            background-color: #fff9db;
+            border-color: #ffe066;
+            color: #f59f00;
+        }
+
+        .relay-info {
+            font-size: 11px;
+            color: #666666;
+            margin-top: 3px;
+        }
+
+        /* ── Toast & Progress Bar ── */
+        #toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #333333;
+            color: #ffffff;
+            padding: 10px 15px;
+            border-radius: 3px;
+            font-size: 13px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 1000;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        #toast.show {
+            opacity: 1;
+        }
+
+        #progress-indicator {
+            height: 3px;
+            background-color: #0366d6;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 4.5s linear;
+            z-index: 2000;
+        }
+
+        #progress-indicator.active {
+            transform: scaleX(1);
+        }
+
+        .empty-state {
+            padding: 40px;
+            text-align: center;
+            color: #6c757d;
+        }
+
+        /* ── Responsive Media Queries ── */
+        @media (max-width: 992px) {
+            .stats-bar {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .panel-row {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-bar {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Prevent table overflow on small screens */
+        #results-body,
+        #history-body {
+            overflow-x: auto;
+            width: 100%;
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <div id="progress-indicator"></div>
+    <div id="toast"></div>
+
+    <div class="container">
+        <header>
+            <div>
+                <h1>Mneti Administrative Dashboard</h1>
+                <div class="subtitle">Institutional Internal Network Device Location Discovery System</div>
+            </div>
+            <div>
+                <button class="btn btn-sm" onclick="clearResults()">Clear View</button>
+                <button class="btn btn-sm btn-primary" id="export-btn" onclick="exportCSV()" disabled>Export
+                    CSV</button>
+            </div>
+        </header>
+
+        <div class="main-grid">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-title">Discovery Operations</div>
+                <button class="nav-link active" id="nav-discover" onclick="showSection('discover')">◈ Discover
+                    Devices</button>
+                <button class="nav-link" id="nav-history" onclick="showSection('history')">◷ Session History</button>
+
+                <div class="sidebar-title" style="margin-top: 15px;">System Diagnostics</div>
+                <div style="font-size: 12px; color: #555555; padding: 2px 5px;">
+                    • Server: <span style="color: #28a745; font-weight: bold;">Online</span>
+                </div>
+                <div style="font-size: 12px; color: #555555; padding: 2px 5px;">
+                    • Server IP: <span style="font-weight: bold;">{{ server_ip }}</span>
+                </div>
+                <div style="font-size: 11px; color: #777777; padding: 2px 5px; font-family: monospace;">
+                    Ports: UDP 5000 / HTTP 5001
+                </div>
+            </aside>
+
+
+            <!-- Main Content Area -->
+            <main>
+                <!-- Stats Row -->
+                <div class="stats-bar">
+                    <div class="stat-box">
+                        <div class="stat-num" id="stat-total">—</div>
+                        <div class="stat-lbl">Total Discovered</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num" id="stat-managed">—</div>
+                        <div class="stat-lbl">Managed Clients</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num" id="stat-relayed">—</div>
+                        <div class="stat-lbl">Relayed behind Hotspot</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num" id="stat-unmanaged">—</div>
+                        <div class="stat-lbl">Unmanaged Hotspot Clients</div>
+                    </div>
+                </div>
+
+                <!-- Panels Grid -->
+                <div class="panel-row" id="inputs-row">
+                    <!-- Targeted Discovery -->
+                    <div class="panel">
+                        <div class="panel-title">⊙ Targeted Discovery Search</div>
+                        <div class="form-group">
+                            <select id="target-mode">
+                                <option value="mac">MAC</option>
+                                <option value="ip">IP</option>
+                            </select>
+                            <input type="text" id="target-input" placeholder="e.g. AA:BB:CC:DD:EE:FF or 10.0.0.15"
+                                onkeydown="if(event.key==='Enter') triggerTargeted()">
+                            <button class="btn btn-primary" onclick="triggerTargeted()" id="btn-targeted">Search
+                                Target</button>
+                        </div>
+                        <p style="font-size: 11px; color: #6c757d; margin-top: 5px;">
+                            Sends UDP broadcast request. Any managed client matching this MAC or IP will report back
+                            within 5s.
+                        </p>
+                    </div>
+
+                    <!-- Full Discovery -->
+                    <div class="panel">
+                        <div class="panel-title">⊕ Full Network Discovery Scan</div>
+                        <p style="font-size: 13px; color: #555555; margin-bottom: 12px;">
+                            Broadcast discovery packet to all clients on the internal subnet. All listening devices will
+                            report location.
+                        </p>
+                        <button class="btn btn-primary" onclick="triggerFullDiscovery()" id="btn-full"
+                            style="width: 100%;">
+                            Trigger Full Subnet Discovery
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Results Table Box -->
+                <div class="content-box" id="results-section">
+                    <div class="box-header">
+                        <span id="results-label">Discovery Results</span>
+                        <span id="results-status" style="font-size: 12px; color: #6c757d; font-weight: normal;"></span>
+                    </div>
+                    <div id="results-body">
+                        <div class="empty-state">
+                            Initiate a targeted search or full scan above to locate devices on the network.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- History Table Box (Hidden by default) -->
+                <div class="content-box" id="history-section" style="display: none;">
+                    <div class="box-header">
+                        <span>Past Discovery Sessions</span>
+                        <button class="btn btn-sm" onclick="loadHistory()">Refresh</button>
+                    </div>
+                    <div id="history-body">
+                        <div class="empty-state">
+                            No history records found.
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- ── JavaScript Controllers ── -->
+    <script>
+        let currentRequestId = null;
+        let pollTimer = null;
+        let pollStart = null;
+
+        function showSection(name) {
+            document.getElementById('results-section').style.display = name === 'discover' ? '' : 'none';
+            document.getElementById('inputs-row').style.display = name === 'discover' ? '' : 'none';
+            document.getElementById('history-section').style.display = name === 'history' ? '' : 'none';
+
+            document.getElementById('nav-discover').classList.remove('active');
+            document.getElementById('nav-history').classList.remove('active');
+
+            if (name === 'discover') {
+                document.getElementById('nav-discover').classList.add('active');
+            } else {
+                document.getElementById('nav-history').classList.add('active');
+                loadHistory();
+            }
+        }
+
+        function toast(msg, type = 'info') {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = 'show';
+            clearTimeout(el._timer);
+            el._timer = setTimeout(() => el.className = '', 3500);
+        }
+
+        function setLoading(loading) {
+            const bar = document.getElementById('progress-indicator');
+            if (loading) {
+                bar.classList.add('active');
+                document.getElementById('btn-targeted').disabled = true;
+                document.getElementById('btn-full').disabled = true;
+                document.getElementById('results-status').textContent = 'Scanning network, collecting responses...';
+            } else {
+                bar.classList.remove('active');
+                setTimeout(() => { bar.style.transition = 'none'; bar.style.transform = 'scaleX(0)'; }, 500);
+                setTimeout(() => { bar.style.transition = 'transform 4.5s linear'; }, 600);
+                document.getElementById('btn-targeted').disabled = false;
+                document.getElementById('btn-full').disabled = false;
+            }
+        }
+
+        async function triggerTargeted() {
+            const target = document.getElementById('target-input').value.trim();
+            const mode = document.getElementById('target-mode').value;
+            if (!target) { toast('Please input a target MAC or IP address'); return; }
+
+            clearResults();
+            setLoading(true);
+            document.getElementById('results-label').textContent = `Targeted Search: ${target}`;
+
+            try {
+                const res = await fetch('/api/discover/targeted', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ target, mode }),
+                });
+                const data = await res.json();
+                if (!res.ok) { toast(data.error || 'Request failed'); setLoading(false); return; }
+                currentRequestId = data.request_id;
+                startPolling();
+            } catch (e) {
+                toast('Server connection error: ' + e.message);
+                setLoading(false);
+            }
+        }
+
+        async function triggerFullDiscovery() {
+            clearResults();
+            setLoading(true);
+            document.getElementById('results-label').textContent = 'Full Subnet Scan';
+
+            try {
+                const res = await fetch('/api/discover/all', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) { toast(data.error || 'Request failed'); setLoading(false); return; }
+                currentRequestId = data.request_id;
+                startPolling();
+            } catch (e) {
+                toast('Server connection error: ' + e.message);
+                setLoading(false);
+            }
+        }
+
+        function startPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollStart = Date.now();
+            pollTimer = setInterval(async () => {
+                await fetchResults();
+                if (Date.now() - pollStart > 5200) {
+                    clearInterval(pollTimer);
+                    setLoading(false);
+                    const count = document.querySelectorAll('#results-body tbody tr').length;
+                    toast(count > 0 ? `Discovery scan complete. Found ${count} device(s).` : 'No response received from target subnet.');
+                    document.getElementById('results-status').textContent = `Completed · ${count} devices found`;
+                }
+            }, 800);
+        }
+
+        async function fetchResults() {
+            if (!currentRequestId) return;
+            try {
+                const res = await fetch(`/api/results/${currentRequestId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                renderResults(data.devices || []);
+            } catch (_) { }
+        }
+
+        function renderResults(devices) {
+            const managed = devices.filter(d => d.type === 'managed').length;
+            const relayed = devices.filter(d => d.type === 'relayed').length;
+            const unmanaged = devices.filter(d => d.type === 'unmanaged').length;
+
+            document.getElementById('stat-total').textContent = devices.length;
+            document.getElementById('stat-managed').textContent = managed;
+            document.getElementById('stat-relayed').textContent = relayed;
+            document.getElementById('stat-unmanaged').textContent = unmanaged;
+
+            const exportBtn = document.getElementById('export-btn');
+            exportBtn.disabled = devices.length === 0;
+
+            if (devices.length === 0) {
+                document.getElementById('results-body').innerHTML =
+                    '<div class="empty-state">Waiting for devices to respond...</div>';
+                return;
+            }
+
+            const rows = devices.map(d => {
+                let badge = '<span class="badge">● CLIENT</span>';
+                if (d.type === 'managed') {
+                    badge = '<span class="badge badge-managed">● MANAGED</span>';
+                } else if (d.type === 'relayed') {
+                    badge = '<span class="badge badge-relayed">↗ RELAYED</span>';
+                } else if (d.type === 'unmanaged') {
+                    badge = '<span class="badge badge-unmanaged">○ UNMANAGED</span>';
+                }
+
+                const location = d.building
+                    ? `<span>${escHtml(d.building)} · ${escHtml(d.room)}</span>`
+                    : '<span style="color: #999;">—</span>';
+
+                const relay = d.relay_host
+                    ? `<div class="relay-info">Relayed via: ${escHtml(d.relay_host)} (${escHtml(d.relay_building)} / ${escHtml(d.relay_room)})</div>` : '';
+
+                const ts = d.timestamp ? d.timestamp.replace('T', ' ').substring(0, 19) : '—';
+
+                return `<tr>
+                    <td>${badge}${relay}</td>
+                    <td><strong>${escHtml(d.hostname || '—')}</strong><br><span class="mono" style="color: #666; font-size: 11px;">${escHtml(d.ip)}</span></td>
+                    <td class="mono">${escHtml(d.mac || '—')}</td>
+                    <td>${location}</td>
+                    <td class="mono">${escHtml(d.username || '—')}</td>
+                    <td>${escHtml(d.vendor || '—')}</td>
+                    <td class="mono" style="font-size: 11px; color: #666;">${ts}</td>
+                </tr>`;
+            }).join('');
+
+            document.getElementById('results-body').innerHTML = `
+            <table>
+                <thead>
+                    <tr>
+                        <th>Connection Type</th>
+                        <th>Device Name / IP</th>
+                        <th>MAC Address</th>
+                        <th>Physical Location</th>
+                        <th>Active User</th>
+                        <th>Hardware Vendor</th>
+                        <th>Discovery Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+        }
+
+        async function loadHistory() {
+            try {
+                const res = await fetch('/api/history');
+                const data = await res.json();
+                if (!data.length) {
+                    document.getElementById('history-body').innerHTML = '<div class="empty-state">No sessions found in history.</div>';
+                    return;
+                }
+                const rows = data.map(s => `<tr>
+                    <td class="mono">${s.request_id.substring(0, 8)}…</td>
+                    <td><span class="badge">${s.type.toUpperCase()}</span></td>
+                    <td>${s.device_count} device(s) responded</td>
+                    <td class="mono" style="font-size: 11px; color: #666;">${(s.started_at || '').replace('T', ' ').substring(0, 19)}</td>
+                </tr>`).join('');
+                document.getElementById('history-body').innerHTML = `<table>
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>Scan Type</th>
+                            <th>Discovery Count</th>
+                            <th>Trigger Timestamp</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+            } catch (_) { }
+        }
+
+        function exportCSV() {
+            if (currentRequestId) window.open(`/api/export/${currentRequestId}`);
+        }
+
+        function clearResults() {
+            currentRequestId = null;
+            if (pollTimer) clearInterval(pollTimer);
+            document.getElementById('stat-total').textContent = '—';
+            document.getElementById('stat-managed').textContent = '—';
+            document.getElementById('stat-relayed').textContent = '—';
+            document.getElementById('stat-unmanaged').textContent = '—';
+            document.getElementById('results-body').innerHTML =
+                '<div class="empty-state">Initiate a targeted search or full scan above to locate devices on the network.</div>';
+            document.getElementById('results-label').textContent = 'Discovery Results';
+            document.getElementById('results-status').textContent = '';
+            document.getElementById('export-btn').disabled = true;
+        }
+
+        function escHtml(str) {
+            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+    </script>
+</body>
+
+</html>
