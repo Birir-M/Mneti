@@ -1,36 +1,36 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Mneti Agent — UDP Discovery Listener
+    Mneti Agent - UDP Discovery Listener
 .DESCRIPTION
     Lightweight, high-performance event-driven listener. Binds to UDP 5000 and waits silently.
     On receiving a valid HMAC-signed discovery broadcast from the IT server:
-      1. Validates the HMAC-SHA256 signature — drops the packet on mismatch
+      1. Validates the HMAC-SHA256 signature - drops the packet on mismatch
       2. Checks whether this machine is the search target (targeted mode)
          or responds unconditionally (full mode)
       3. POSTs device info (hostname, MAC, IP, user, building, room) to server
-      4. If this machine hosts a Windows hotspot, performs dual-mode discovery:
-         a) Managed hotspot-connected clients: Relays discovery to them and collects
-            their reports using a temporary HTTP Listener, then forwards them with relay metadata.
-         b) Unmanaged hotspot-connected clients: Discovers them via ARP, hosts.ics, and 
-            asynchronous ping sweeps, then forwards them with parent location details.
-    Runs until stopped. Designed to be installed as a persistent background service via
-    Install-MnetiService.ps1.
+      4. Detects ALL secondary private IPv4 subnets attached to this host and
+         relays discovery into each one (multi-homed relay architecture):
+         a) Managed clients: relayed via UDP + temporary HTTP listener
+         b) Unmanaged clients: discovered via ARP + async ping sweep
+      5. Relay depth tracking prevents rebroadcast storms (max depth = 1)
 .NOTES
     Requires config.json at C:\ProgramData\Locator\config.json
 #>
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = 'SilentlyContinue'   # Network errors are non-fatal
+$ErrorActionPreference = 'SilentlyContinue'
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-$CONFIG_FILE    = 'C:\ProgramData\Locator\config.json'
-$LOG_FILE       = 'C:\ProgramData\Locator\agent.log'
-$UDP_PORT       = 5000
-$BUFFER_SIZE    = 4096
-$POST_TIMEOUT   = 8          # seconds
-$CACHE_TTL      = 60         # seconds — deduplicate request IDs
-$MAX_LOG_BYTES  = 5MB
+$CONFIG_FILE   = 'C:\ProgramData\Locator\config.json'
+$LOG_FILE      = 'C:\ProgramData\Locator\agent.log'
+$UDP_PORT      = 5000
+$RELAY_HTTP_PORT = 5002
+$BUFFER_SIZE   = 4096
+$POST_TIMEOUT  = 8
+$CACHE_TTL     = 60
+$MAX_LOG_BYTES = 5MB
+$MAX_RELAY_DEPTH = 1
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 $script:LogLock = New-Object System.Threading.Mutex($false, 'MnetiLogMutex')
@@ -39,7 +39,6 @@ function Write-AgentLog {
     param([string]$Level, [string]$Message)
     $line = "{0} [{1}] {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Level.ToUpper(), $Message
     Write-Host $line
-
     try {
         if ($script:LogLock.WaitOne(500)) {
             if ((Test-Path $LOG_FILE) -and (Get-Item $LOG_FILE).Length -gt $MAX_LOG_BYTES) {
@@ -48,27 +47,25 @@ function Write-AgentLog {
             Add-Content -Path $LOG_FILE -Value $line -Encoding UTF8 -Force
         }
     } catch {
-        # Log write errors are ignored to ensure agent never crashes
     } finally {
         try { $script:LogLock.ReleaseMutex() } catch {}
     }
 }
 
-function Write-Info  { param([string]$m) Write-AgentLog 'INFO'  $m }
-function Write-Warn  { param([string]$m) Write-AgentLog 'WARN'  $m }
-function Write-Err   { param([string]$m) Write-AgentLog 'ERROR' $m }
-function Write-Debug2{ param([string]$m) Write-AgentLog 'DEBUG' $m }
+function Write-Info   { param([string]$m) Write-AgentLog 'INFO'  $m }
+function Write-Warn   { param([string]$m) Write-AgentLog 'WARN'  $m }
+function Write-Err    { param([string]$m) Write-AgentLog 'ERROR' $m }
+function Write-Debug2 { param([string]$m) Write-AgentLog 'DEBUG' $m }
 
 # ── Config loading ────────────────────────────────────────────────────────────
 function Get-AgentConfig {
     if (-not (Test-Path $CONFIG_FILE)) {
-        Write-Err "Config file not found: $CONFIG_FILE"
-        Write-Err "Run Setup-Mneti.ps1 first."
+        Write-Err "Config file not found: $CONFIG_FILE. Run Setup-Mneti.ps1 first."
         exit 1
     }
     try {
         $cfg = Get-Content $CONFIG_FILE -Raw -Encoding UTF8 | ConvertFrom-Json
-        foreach ($field in @('building','room','token')) {
+        foreach ($field in @('building', 'room', 'token')) {
             if (-not $cfg.$field) {
                 Write-Err "Config missing required field: $field"
                 exit 1
@@ -103,25 +100,19 @@ function Test-ConstantTimeEqual {
 }
 
 # ── Request dedup cache ───────────────────────────────────────────────────────
-$script:SeenIds  = @{}
+$script:SeenIds   = @{}
 $script:CacheLock = New-Object System.Threading.Mutex($false, 'MnetiCacheMutex')
 
 function Test-AlreadySeen {
     param([string]$RequestId)
     try {
         if ($script:CacheLock.WaitOne(200)) {
-            $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-            # Evict expired entries
+            $now     = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
             $expired = @()
             foreach ($key in $script:SeenIds.Keys) {
-                if (($now - $script:SeenIds[$key]) -gt $CACHE_TTL) {
-                    $expired += $key
-                }
+                if (($now - $script:SeenIds[$key]) -gt $CACHE_TTL) { $expired += $key }
             }
-            foreach ($key in $expired) {
-                $script:SeenIds.Remove($key)
-            }
-
+            foreach ($key in $expired) { $script:SeenIds.Remove($key) }
             if ($script:SeenIds.ContainsKey($RequestId)) { return $true }
             $script:SeenIds[$RequestId] = $now
             return $false
@@ -132,8 +123,11 @@ function Test-AlreadySeen {
     }
 }
 
-# ── Network info ──────────────────────────────────────────────────────────────
+# ── Network helpers ───────────────────────────────────────────────────────────
+
 function Get-NetworkAdapters {
+    # Returns adapters whose IPs are NOT loopback, APIPA, or link-local.
+    # Used for self-reporting (picks the primary adapter).
     $adapters = @()
     try {
         Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | ForEach-Object {
@@ -142,12 +136,14 @@ function Get-NetworkAdapters {
                                       -AddressFamily IPv4 -ErrorAction SilentlyContinue
             foreach ($addr in $addrs) {
                 $ip = $addr.IPAddress
-                if ($ip -like '127.*' -or $ip -like '169.254.*' -or $ip -like '192.168.137.*') { continue }
+                if ($ip -like '127.*' -or $ip -like '169.254.*') { continue }
                 $mac = ($adapter.MacAddress -replace '-', ':').ToUpper()
                 $adapters += [pscustomobject]@{
-                    Name = $adapter.Name
-                    MAC  = $mac
-                    IP   = $ip
+                    Name           = $adapter.Name
+                    MAC            = $mac
+                    IP             = $ip
+                    InterfaceIndex = $adapter.InterfaceIndex
+                    PrefixLength   = $addr.PrefixLength
                 }
             }
         }
@@ -155,6 +151,98 @@ function Get-NetworkAdapters {
         Write-Warn "Adapter enumeration error: $_"
     }
     return $adapters
+}
+
+function Get-SubnetBroadcast {
+    param([string]$IP, [int]$PrefixLength)
+    try {
+        $ipBytes   = ([System.Net.IPAddress]$IP).GetAddressBytes()
+        $maskBits  = [uint32]([System.Math]::Pow(2, 32) - [System.Math]::Pow(2, 32 - $PrefixLength))
+        $ipInt     = [System.BitConverter]::ToUInt32($ipBytes[3..0], 0)
+        $netInt    = $ipInt -band $maskBits
+        $bcastInt  = $netInt -bor (-bnot [int]$maskBits -band 0xFFFFFFFF)
+        $bcastBytes = [System.BitConverter]::GetBytes([uint32]$bcastInt)
+        return ([System.Net.IPAddress][byte[]]($bcastBytes[3], $bcastBytes[2], $bcastBytes[1], $bcastBytes[0])).ToString()
+    } catch {
+        # Fallback: replace last octet with 255
+        $parts    = $IP -split '\.'
+        $parts[3] = '255'
+        return $parts -join '.'
+    }
+}
+
+function Test-IsPrivateIP {
+    param([string]$IP)
+    return ($IP -like '10.*' -or
+            ($IP -like '172.*' -and [int]($IP -split '\.')[1] -ge 16 -and [int]($IP -split '\.')[1] -le 31) -or
+            $IP -like '192.168.*')
+}
+
+function Get-RelayNetworks {
+    param([string]$SenderIP)
+
+    $relayNets = @()
+    $seen      = @{}
+
+    try {
+        Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | ForEach-Object {
+
+            $adapter = $_
+
+            $addrs = Get-NetIPAddress `
+                -InterfaceIndex $adapter.InterfaceIndex `
+                -AddressFamily IPv4 `
+                -ErrorAction SilentlyContinue
+
+            foreach ($addr in $addrs) {
+
+                $ip     = $addr.IPAddress
+                $prefix = $addr.PrefixLength
+
+                if ($ip -like '127.*' -or $ip -like '169.254.*') {
+                    continue
+                }
+
+                if (-not (Test-IsPrivateIP -IP $ip)) {
+                    continue
+                }
+
+                $myBcast     = Get-SubnetBroadcast -IP $ip -PrefixLength $prefix
+                $senderBcast = Get-SubnetBroadcast -IP $SenderIP -PrefixLength $prefix
+
+                if ($myBcast -eq $senderBcast) {
+                    Write-Debug2 "Skipping originating subnet for relay: $ip/$prefix"
+                    continue
+                }
+
+                $dedupKey = "$ip/$prefix"
+
+                if ($seen.ContainsKey($dedupKey)) {
+                    Write-Debug2 "Skipping duplicate relay subnet: $dedupKey"
+                    continue
+                }
+
+                $seen[$dedupKey] = $true
+
+                $broadcast = Get-SubnetBroadcast -IP $ip -PrefixLength $prefix
+
+                $relayNets += [pscustomobject]@{
+                    IPAddress   = $ip
+                    Broadcast   = $broadcast
+                    Prefix      = $prefix
+                    Interface   = $adapter.InterfaceIndex
+                    AdapterName = $adapter.Name
+                }
+
+                Write-Info "Relay subnet detected: $ip/$prefix (broadcast $broadcast) on $($adapter.Name)"
+            }
+        }
+    }
+    catch {
+        Write-Warn "Relay network enumeration error: $_"
+    }
+
+    return $relayNets
 }
 
 function Get-LoggedInUser {
@@ -170,13 +258,13 @@ function Get-LoggedInUser {
 function Get-MacVendor {
     param([string]$MAC)
     $oui = @{
-        '00:50:56'='VMware';  '00:0C:29'='VMware';  '00:15:5D'='Hyper-V'
-        '08:00:27'='VirtualBox'; '52:54:00'='QEMU'
-        'B8:27:EB'='Raspberry Pi'; 'DC:A6:32'='Raspberry Pi'
-        '00:1A:11'='Google';  'A4:C3:F0'='Google'
-        'AC:BC:32'='Apple';   '3C:22:FB'='Apple';   '00:17:F2'='Apple'
-        '00:1B:21'='Intel';   '14:18:77'='Dell';    'B4:B6:86'='HP'
-        '3C:D9:2B'='HP';      '00:23:AE'='Dell';    '18:B4:30'='Nest'
+        '00:50:56' = 'VMware';   '00:0C:29' = 'VMware';   '00:15:5D' = 'Hyper-V'
+        '08:00:27' = 'VirtualBox'; '52:54:00' = 'QEMU'
+        'B8:27:EB' = 'Raspberry Pi'; 'DC:A6:32' = 'Raspberry Pi'
+        '00:1A:11' = 'Google';   'A4:C3:F0' = 'Google'
+        'AC:BC:32' = 'Apple';    '3C:22:FB' = 'Apple';    '00:17:F2' = 'Apple'
+        '00:1B:21' = 'Intel';    '14:18:77' = 'Dell';     'B4:B6:86' = 'HP'
+        '3C:D9:2B' = 'HP';       '00:23:AE' = 'Dell';     '18:B4:30' = 'Nest'
     }
     if ($MAC.Length -ge 8) {
         $prefix = $MAC.Substring(0, 8).ToUpper()
@@ -185,18 +273,20 @@ function Get-MacVendor {
     return ''
 }
 
+function Resolve-DeviceHostname {
+    param([string]$IP)
+    try { return [System.Net.Dns]::GetHostEntry($IP).HostName } catch { return '' }
+}
+
 # ── Packet validation ─────────────────────────────────────────────────────────
 function Test-Packet {
     param([byte[]]$Bytes, [string]$Token)
-
     try {
         $json = [System.Text.Encoding]::UTF8.GetString($Bytes)
-
         if ($json.Length -gt $BUFFER_SIZE) {
             Write-Warn "Oversized packet - dropped"
             return $null
         }
-
         $envelope = $json | ConvertFrom-Json
     } catch {
         Write-Warn "Malformed packet (not JSON) - dropped"
@@ -210,20 +300,23 @@ function Test-Packet {
 
     $p = $envelope.payload
 
-    # Verify inner token first (fast reject)
     if (-not (Test-ConstantTimeEqual $p.token $Token)) {
         Write-Warn "Token mismatch inside payload - dropped"
         return $null
     }
 
-    # Re-serialize the payload to JSON in the same key order Python used,
-    # then HMAC that — avoids all format-string injection issues
-    $payloadJson = '{"request_id":"' + $p.request_id + '","mode":"' + $p.mode + '","target":"' + $p.target + '","token":"' + $p.token + '","callback_url":"' + $p.callback_url + '","timestamp":"' + $p.timestamp + '"}'
+    # Reconstruct signed string in same key order as Python _build_packet
+    $relayDepth = 0
+    if ($null -ne $p.relay_depth) {
+        $relayDepth = [int]$p.relay_depth
+    }
+
+    $payloadJson = '{"request_id":"' + $p.request_id + '","mode":"' + $p.mode + '","target":"' + $p.target + '","token":"' + $p.token + '","callback_url":"' + $p.callback_url + '","timestamp":"' + $p.timestamp + '","relay_depth":' + $relayDepth + '}'
 
     $expectedSig = Get-HmacSha256 -Secret $Token -Message $payloadJson
 
     if (-not (Test-ConstantTimeEqual $expectedSig $envelope.sig)) {
-        Write-Warn "HMAC mismatch"
+        Write-Warn "HMAC mismatch - dropped (possible forgery)"
         return $null
     }
 
@@ -232,11 +325,7 @@ function Test-Packet {
 
 # ── Target matching ───────────────────────────────────────────────────────────
 function Test-IsTarget {
-    param(
-        [object[]]$Adapters,
-        [string]  $Mode,    # targeted_mac | targeted_ip
-        [string]  $Target
-    )
+    param([object[]]$Adapters, [string]$Mode, [string]$Target)
     $Target = $Target.Trim().ToUpper()
     foreach ($a in $Adapters) {
         if ($Mode -eq 'targeted_mac') {
@@ -253,289 +342,429 @@ function Test-IsTarget {
 function Send-Report {
     param([string]$CallbackUrl, [hashtable]$Report, [string]$Token)
     try {
-        $body    = $Report | ConvertTo-Json -Compress
+        $body      = $Report | ConvertTo-Json -Compress
         $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
-        $sig     = Get-HmacSha256 -Secret $Token -Message $body
+        $sig       = Get-HmacSha256 -Secret $Token -Message $body
 
-        $req = [System.Net.HttpWebRequest]::Create($CallbackUrl)
-        $req.Method        = 'POST'
-        $req.ContentType   = 'application/json'
-        $req.Timeout       = $POST_TIMEOUT * 1000
+        $req                = [System.Net.HttpWebRequest]::Create($CallbackUrl)
+        $req.Method         = 'POST'
+        $req.ContentType    = 'application/json'
+        $req.Timeout        = $POST_TIMEOUT * 1000
         $req.Headers.Add('X-Signature', $sig)
 
         $stream = $req.GetRequestStream()
         $stream.Write($bodyBytes, 0, $bodyBytes.Length)
         $stream.Close()
 
-        $resp = $req.GetResponse()
+        $resp   = $req.GetResponse()
         $status = [int]$resp.StatusCode
         $resp.Close()
 
-        Write-Info "Report posted → $CallbackUrl [HTTP $status] for $($Report.hostname) ($($Report.type))"
+        Write-Info "Report posted -> $CallbackUrl [HTTP $status] $($Report.hostname) ($($Report.type))"
     } catch {
         Write-Err "Failed to post report to $CallbackUrl : $_"
     }
 }
 
-# ── Hotspot detection and discovery ───────────────────────────────────────────
-function Get-HotspotAdapter {
-    # Check if hosting Windows mobile hotspot (typically assigned 192.168.137.1)
-    try {
-        $adapters = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' }
-        foreach ($adapter in $adapters) {
-            $addrs = Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue
-            foreach ($addr in $addrs) {
-                if ($addr.IPAddress -like "192.168.137.*") {
-                    return [pscustomobject]@{
-                        InterfaceIndex = $adapter.InterfaceIndex
-                        Name           = $adapter.Name
-                        IPAddress      = $addr.IPAddress
-                        Subnet         = "192.168.137.0/24"
-                    }
-                }
-            }
-        }
-    } catch {
-        Write-Warn "Failed to query hotspot adapters: $_"
+# ── Build a relay broadcast packet ───────────────────────────────────────────
+function Build-RelayPacket {
+    param(
+        [object]$OriginalPayload,
+        [string]$LocalCallbackUrl,
+        [string]$Token,
+        [int]   $RelayDepth
+    )
+    $relayPayload = [ordered]@{
+        request_id   = $OriginalPayload.request_id
+        mode         = $OriginalPayload.mode
+        target       = $OriginalPayload.target
+        token        = $Token
+        callback_url = $LocalCallbackUrl
+        timestamp    = $OriginalPayload.timestamp
+        relay_depth  = $RelayDepth
     }
-    return $null
+
+    # Serialize in the exact key order the HMAC covers
+    $payloadJson = '{"request_id":"' + $relayPayload.request_id + '","mode":"' + $relayPayload.mode + '","target":"' + $relayPayload.target + '","token":"' + $relayPayload.token + '","callback_url":"' + $relayPayload.callback_url + '","timestamp":"' + $relayPayload.timestamp + '","relay_depth":' + $relayPayload.relay_depth + '}'
+    $sig         = Get-HmacSha256 -Secret $Token -Message $payloadJson
+
+    $envelope = @{
+        payload = $relayPayload
+        sig     = $sig
+    }
+    return [System.Text.Encoding]::UTF8.GetBytes(($envelope | ConvertTo-Json -Compress -Depth 5))
 }
 
-function Resolve-DeviceHostname {
-    param([string]$IP)
-    try {
-        return [System.Net.Dns]::GetHostEntry($IP).HostName
-    } catch {
-        return ''
-    }
-}
-
-function Invoke-HotspotDiscovery {
+# ── Subnet relay (generalised, replaces Invoke-HotspotDiscovery) ──────────────
+function Invoke-SubnetRelay {
     param(
         [object]$Packet,
         [object]$Config,
         [string]$MyHostname,
         [string]$MyBuilding,
         [string]$MyRoom,
-        [object]$Hotspot
+        [object]$RelayNet
     )
 
-    Write-Info "Activating hotspot discovery relay on adapter: $($Hotspot.Name) (${script:MyIpAddress})"
+    $localIP       = $RelayNet.IPAddress
+    $broadcastAddr = $RelayNet.Broadcast
+    $prefix        = $RelayNet.Prefix
+    $newDepth      = [int]$Packet.relay_depth + 1
 
-    # 1. Start the temporary HttpListener to capture responses from managed clients behind NAT
-    $httpPort = 5002
-    $localCallbackUrl = "http://$($Hotspot.IPAddress):$httpPort/api/report"
-    
-    $listener = New-Object System.Net.HttpListener
-    $listener.Prefixes.Add("http://+:$httpPort/api/report/")
-    
-    $listenerStarted = $false
-    try {
-        $listener.Start()
-        $listenerStarted = $true
-        Write-Info "Temporary HTTP Listener started at $localCallbackUrl"
-    } catch {
-        Write-Warn "Could not start temporary HttpListener: $_"
-    }
+    Write-Info "Relaying discovery into $localIP/$prefix via $broadcastAddr"
 
-    # 2. Broadcast the discovery request to the hotspot subnet on UDP port 5000
-    try {
-        $relayPacket = @{
-            request_id   = $Packet.request_id
-            mode         = $Packet.mode
-            target       = $Packet.target
-            token        = $Config.token
-            callback_url = $localCallbackUrl
-            timestamp    = $Packet.timestamp
-        }
-        $payload = $relayPacket | ConvertTo-Json -Compress
-        $sig = Get-HmacSha256 -Secret $Config.token -Message $payload
-        $envelope = @{
-            payload = $relayPacket
-            sig     = $sig
-        }
-        $envelopeJson = $envelope | ConvertTo-Json -Compress
-        $envelopeBytes = [System.Text.Encoding]::UTF8.GetBytes($envelopeJson)
+    $listener         = $null
+    $listenerStarted  = $false
+    $relayPort        = $null
+    $localCallbackUrl = $null
 
-        $udpClient = New-Object System.Net.Sockets.UdpClient
-        $udpClient.EnableBroadcast = $true
-        # Broadcast on the hotspot subnet broadcast address
-        $udpClient.Send($envelopeBytes, $envelopeBytes.Length, "192.168.137.255", 5000)
-        $udpClient.Close()
-        Write-Info "Discovery broadcast sent to hotspot subnet (192.168.137.255:5000)"
-    } catch {
-        Write-Warn "UDP broadcast on hotspot network failed: $_"
-    }
+    # ------------------------------------------------------------------
+    # Start relay HTTP listener using unique high random port
+    # ------------------------------------------------------------------
 
-    # 3. Parallel asynchronous .NET Ping sweep to quickly populate the system ARP cache
-    Write-Info "Triggering fast parallel .NET ping sweep on hotspot subnet..."
-    for ($i = 2; $i -le 254; $i++) {
-        $ip = "192.168.137.$i"
-        if ($ip -eq $Hotspot.IPAddress) { continue }
-        $ping = New-Object System.Net.NetworkInformation.Ping
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+
         try {
-            $ping.SendAsync($ip, 150, $null) | Out-Null
-        } catch {}
-    }
 
-    # 4. Listen for incoming HTTP POSTs from managed clients on the hotspot network
-    $managedReports = @()
-    if ($listenerStarted) {
-        $timeout = [DateTime]::Now.AddSeconds(4)
-        while ([DateTime]::Now -lt $timeout) {
-            if ($listener.IsListening) {
-                try {
-                    $context = $listener.GetContext()
-                    $request = $context.Request
-                    $response = $context.Response
+            $relayPort = Get-Random -Minimum 5500 -Maximum 65000
 
-                    # Read POST body
-                    $reader = New-Object System.IO.StreamReader($request.InputStream, [System.Text.Encoding]::UTF8)
-                    $body = $reader.ReadToEnd()
-                    $reader.Close()
+            $localCallbackUrl = "http://$($localIP):$relayPort/api/report"
 
-                    # Respond with 200 OK
-                    $buf = [System.Text.Encoding]::UTF8.GetBytes('{"status":"ok"}')
-                    $response.ContentLength64 = $buf.Length
-                    $response.OutputStream.Write($buf, 0, $buf.Length)
-                    $response.OutputStream.Close()
+            Write-Info "Attempting relay listener on ${localIP}:$relayPort"
 
-                    # Parse report
-                    $report = $body | ConvertFrom-Json
-                    
-                    # Validate the signature of the reported client payload
-                    $clientHmac = $request.Headers.Get('X-Signature')
-                    $expectedClientHmac = Get-HmacSha256 -Secret $Config.token -Message $body
-                    if ($clientHmac -eq $expectedClientHmac -and $report.token -eq $Config.token) {
-                        $managedReports += $report
-                        Write-Info "Received valid relayed report from managed client behind hotspot: $($report.hostname)"
-                    } else {
-                        Write-Warn "Received invalid signature from hotspot client report"
-                    }
-                } catch {
-                    Write-Warn "Error handling relayed client POST: $_"
-                }
-            } else {
-                Start-Sleep -Milliseconds 100
-            }
+            $listener = New-Object System.Net.HttpListener
+
+            # Bind ONLY to relay interface IP
+            $listener.Prefixes.Add("http://$($localIP):$relayPort/api/report/")
+
+            $listener.Start()
+
+            $listenerStarted = $true
+
+            Write-Info "Relay HTTP listener started on ${localIP}:$relayPort"
+
+            break
         }
-        $listener.Stop()
-        $listener.Close()
-        Write-Info "Temporary HTTP Listener stopped. Collected $($managedReports.Count) managed device(s)."
+        catch {
+
+            Write-Warn "Relay listener attempt $attempt failed on port $relayPort : $_"
+
+            try {
+                if ($listener) {
+                    $listener.Close()
+                }
+            } catch {}
+
+            $listener = $null
+        }
     }
 
-    # 5. Extract MAC & IP from ARP table and hosts.ics for unmanaged client detection
-    $discoveredClients = @{} # MAC -> IP
-    $clientHostnames = @{}   # MAC -> Hostname
+    if (-not $listenerStarted) {
+        Write-Warn "Failed to start relay listener for subnet $localIP/$prefix"
+        return
+    }
 
-    # Check hosts.ics (most reliable source of Hostname, IP, MAC for Windows Hotspot)
-    $hostsIcsPath = "C:\Windows\System32\drivers\etc\hosts.ics"
-    if (Test-Path $hostsIcsPath) {
+    try {
+
+        # --------------------------------------------------------------
+        # Broadcast relay discovery packet
+        # --------------------------------------------------------------
+
         try {
-            $lines = Get-Content $hostsIcsPath -ErrorAction SilentlyContinue
-            foreach ($line in $lines) {
-                if ($line -match '^\s*(192\.168\.137\.\d+)\s+([^\s#]+)\s*#\s*([\da-fA-F:-]+)') {
-                    $ip = $Matches[1]
-                    $hostName = $Matches[2].Split('.')[0] # Get short hostname
-                    $mac = $Matches[3].ToUpper() -replace '-', ':'
-                    if ($ip -ne $Hotspot.IPAddress) {
-                        $discoveredClients[$mac] = $ip
-                        $clientHostnames[$mac] = $hostName
-                    }
-                }
-            }
-        } catch {
-            Write-Warn "Failed to parse hosts.ics: $_"
-        }
-    }
 
-    # Also parse 'arp -a' to capture any other active devices
-    $arp = arp -a 2>$null
-    foreach ($line in $arp) {
-        if ($line -match '(192\.168\.137\.\d{1,3})\s+([\da-fA-F]{2}(?:[:\-][\da-fA-F]{2}){5})\s+dynamic') {
-            $ip  = $Matches[1]
-            $mac = $Matches[2].ToUpper() -replace '-', ':'
-            if ($ip -ne $Hotspot.IPAddress) {
-                if (-not $discoveredClients.ContainsKey($mac)) {
-                    $discoveredClients[$mac] = $ip
-                }
+            $packetBytes = Build-RelayPacket `
+                -OriginalPayload $Packet `
+                -LocalCallbackUrl $localCallbackUrl `
+                -Token $Config.token `
+                -RelayDepth $newDepth
+
+            $udpSock = New-Object System.Net.Sockets.UdpClient
+
+            try {
+
+                $udpSock.EnableBroadcast = $true
+
+                $udpSock.Send(
+                    $packetBytes,
+                    $packetBytes.Length,
+                    $broadcastAddr,
+                    $UDP_PORT
+                ) | Out-Null
+
+                Write-Info "Rebroadcasting discovery to ${broadcastAddr}:$UDP_PORT (depth $newDepth)"
+            }
+            finally {
+                $udpSock.Close()
             }
         }
-    }
-
-    Write-Info "ARP/Hosts.ics scan found $($discoveredClients.Count) active IP/MAC mapping(s) on hotspot."
-
-    # 6. Forward reports to the primary server
-    $managedMacs = @{}
-    
-    # 6a. Forward the Managed (Relayed) Clients
-    foreach ($mr in $managedReports) {
-        $mac = $mr.mac.ToUpper() -replace '-', ':'
-        $managedMacs[$mac] = $true
-
-        # Construct and send relayed report
-        $relayReport = @{
-            token          = $Config.token
-            request_id     = $Packet.request_id
-            hostname       = $mr.hostname
-            mac            = $mr.mac
-            ip             = $mr.ip
-            username       = $mr.username
-            building       = $mr.building
-            room           = $mr.room
-            timestamp      = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-            type           = 'relayed'
-            relay_host     = $MyHostname
-            relay_building = $MyBuilding
-            relay_room     = $MyRoom
-            vendor         = $mr.vendor
+        catch {
+            Write-Warn "UDP rebroadcast to $broadcastAddr failed: $_"
         }
 
-        Send-Report -CallbackUrl $Packet.callback_url -Report $relayReport -Token $Config.token
-    }
-
-    # 6b. Forward the Unmanaged Clients
-    foreach ($mac in $discoveredClients.Keys) {
-        if ($managedMacs.ContainsKey($mac)) {
-            continue # Already handled as managed relayed client
-        }
-
-        $ip = $discoveredClients[$mac]
         
-        # Get hostname from hosts.ics, or fallback to DNS lookup
-        $hostname = ""
-        if ($clientHostnames.ContainsKey($mac)) {
-            $hostname = $clientHostnames[$mac]
-        } else {
+
+        # --------------------------------------------------------------
+        # Collect managed client responses
+        # --------------------------------------------------------------
+
+        $managedReports = @()
+
+        $deadline = [DateTime]::Now.AddSeconds(30)
+
+        while ([DateTime]::Now -lt $deadline) {
+
+            try {
+
+                if (-not $listener.IsListening) {
+                    break
+                }
+
+                $asyncResult = $listener.BeginGetContext($null, $null)
+
+                $signaled = $asyncResult.AsyncWaitHandle.WaitOne(250)
+
+                if (-not $signaled) {
+                    continue
+                }
+
+                $ctx = $listener.EndGetContext($asyncResult)
+
+                $req = $ctx.Request
+                $res = $ctx.Response
+
+                $reader = New-Object System.IO.StreamReader(
+                    $req.InputStream,
+                    [System.Text.Encoding]::UTF8
+                )
+
+                $body = $reader.ReadToEnd()
+
+                $reader.Close()
+
+                $buf = [System.Text.Encoding]::UTF8.GetBytes('{"status":"ok"}')
+
+                $res.ContentLength64 = $buf.Length
+                $res.OutputStream.Write($buf, 0, $buf.Length)
+                $res.OutputStream.Close()
+
+                $report       = $body | ConvertFrom-Json
+                $clientHmac   = $req.Headers.Get('X-Signature')
+                $expectedHmac = Get-HmacSha256 -Secret $Config.token -Message $body
+
+                if (
+                    (Test-ConstantTimeEqual $clientHmac $expectedHmac) -and
+                    (Test-ConstantTimeEqual $report.token $Config.token)
+                ) {
+
+                    $managedReports += $report
+
+                    Write-Info "Managed client responded via relay: $($report.hostname) ($($report.ip))"
+                }
+                else {
+                    Write-Warn "Invalid signature on relay response - discarded"
+                }
+            }
+            catch {
+                Write-Warn "Error reading relay response: $_"
+            }
+        }
+
+        Write-Info "Relay listener completed. Managed responses: $(@($managedReports).Count)"
+
+        # --------------------------------------------------------------
+        # Generate subnet-aware host range
+        # --------------------------------------------------------------
+
+        Write-Info "Ping sweep on $localIP/$prefix ..."
+
+        try {
+
+            $ipObj    = [System.Net.IPAddress]::Parse($localIP)
+            $ipBytes  = $ipObj.GetAddressBytes()
+
+            [array]::Reverse($ipBytes)
+
+            $ipInt = [BitConverter]::ToUInt32($ipBytes, 0)
+
+            $mask = [uint32]0
+
+            for ($i = 0; $i -lt $prefix; $i++) {
+                $mask = $mask -bor (1 -shl (31 - $i))
+            }
+
+            $network   = $ipInt -band $mask
+            $broadcast = $network -bor (-bnot $mask)
+
+            for ($host = ($network + 1); $host -lt $broadcast; $host++) {
+
+                $hostBytes = [BitConverter]::GetBytes([uint32]$host)
+
+                [array]::Reverse($hostBytes)
+
+                $targetIP = ([System.Net.IPAddress]$hostBytes).ToString()
+
+                if ($targetIP -eq $localIP) {
+                    continue
+                }
+
+                try {
+                    $ping = New-Object System.Net.NetworkInformation.Ping
+                    $ping.SendAsync($targetIP, 150, $null) | Out-Null
+                }
+                catch {}
+            }
+        }
+        catch {
+            Write-Warn "Subnet-aware ping sweep failed on $localIP/$prefix : $_"
+        }
+
+        # --------------------------------------------------------------
+        # ARP discovery
+        # --------------------------------------------------------------
+
+        $discoveredClients = @{}
+        $managedMacs       = @{}
+
+        $arpOutput = arp -a 2>$null
+
+        foreach ($line in $arpOutput) {
+
+            if (
+                $line -match '(\d{1,3}(?:\.\d{1,3}){3})\s+([\da-fA-F]{2}(?:[:\-][\da-fA-F]{2}){5})\s+dynamic'
+            ) {
+
+                $arpIP  = $Matches[1]
+                $arpMac = $Matches[2].ToUpper() -replace '-', ':'
+
+                try {
+
+                    $arpObj   = [System.Net.IPAddress]::Parse($arpIP)
+                    $arpBytes = $arpObj.GetAddressBytes()
+
+                    [array]::Reverse($arpBytes)
+
+                    $arpInt = [BitConverter]::ToUInt32($arpBytes, 0)
+
+                    if (($arpInt -band $mask) -ne $network) {
+                        continue
+                    }
+
+                    if ($arpIP -eq $localIP) {
+                        continue
+                    }
+
+                    if (-not $discoveredClients.ContainsKey($arpMac)) {
+                        $discoveredClients[$arpMac] = $arpIP
+                    }
+                }
+                catch {}
+            }
+        }
+
+        Write-Info "ARP scan found $(@($discoveredClients.Keys).Count) unmanaged device(s) in $localIP/$prefix"
+
+        # --------------------------------------------------------------
+        # Forward managed relay reports
+        # --------------------------------------------------------------
+
+        foreach ($mr in $managedReports) {
+
+            $mac = $mr.mac.ToUpper() -replace '-', ':'
+
+            $managedMacs[$mac] = $true
+
+            $relayReport = @{
+                token          = $Config.token
+                request_id     = $Packet.request_id
+                hostname       = $mr.hostname
+                mac            = $mr.mac
+                ip             = $mr.ip
+                username       = $mr.username
+                building       = $mr.building
+                room           = $mr.room
+                timestamp      = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+                type           = 'relayed'
+                relay_host     = $MyHostname
+                relay_building = $MyBuilding
+                relay_room     = $MyRoom
+                vendor         = $mr.vendor
+            }
+
+            Send-Report `
+                -CallbackUrl $Packet.callback_url `
+                -Report $relayReport `
+                -Token $Config.token
+        }
+
+        # --------------------------------------------------------------
+        # Forward unmanaged reports
+        # --------------------------------------------------------------
+
+                foreach ($mac in $discoveredClients.Keys) {
+ 
+            if ($managedMacs.ContainsKey($mac)) {
+                continue
+            }
+ 
+            $ip       = $discoveredClients[$mac]
             $hostname = Resolve-DeviceHostname -IP $ip
-        }
-        if (-not $hostname) {
-            $hostname = "Unmanaged-Device"
+ 
+            if (-not $hostname) {
+                $hostname = "Unmanaged-$ip"
+            }
+ 
+            $vendor = Get-MacVendor -MAC $mac
+ 
+            Write-Info "Unmanaged device discovered: $ip ($mac) $vendor"
+ 
+            $unmanagedReport = @{
+                token           = $Config.token
+                request_id      = $Packet.request_id
+                hostname        = $hostname
+                mac             = $mac
+                ip              = $ip
+                username        = ''
+                # Location is intentionally blank for unmanaged ARP-discovered
+                # devices. They are peers on a directly-attached subnet, not
+                # hotspot clients, so their physical location is unknown.
+                # Only managed clients (with the agent installed) report their
+                # own building/room, and relayed clients inherit from the
+                # hotspot host in the "managed relay reports" block above.
+                building        = ''
+                room            = ''
+                timestamp       = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+                type            = 'unmanaged'
+                relay_host      = ''
+                relay_building  = ''
+                relay_room      = ''
+                vendor          = $vendor
+            }
+ 
+            Send-Report `
+                -CallbackUrl $Packet.callback_url `
+                -Report $unmanagedReport `
+                -Token $Config.token
         }
 
-        $vendor = Get-MacVendor -MAC $mac
+    }
+    finally {
 
-        $unmanagedReport = @{
-            token          = $Config.token
-            request_id     = $Packet.request_id
-            hostname       = $hostname
-            mac            = $mac
-            ip             = $ip
-            username       = ''
-            building       = $MyBuilding # Inherit location from parent host
-            room           = $MyRoom
-            timestamp      = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-            type           = 'unmanaged'
-            relay_host     = $MyHostname
-            relay_building = $MyBuilding
-            relay_room     = $MyRoom
-            vendor         = $vendor
+        if ($listener) {
+
+            try {
+                if ($listener.IsListening) {
+                    $listener.Stop()
+                }
+            } catch {}
+
+            try {
+                $listener.Close()
+            } catch {}
+
+            Write-Info "Relay listener cleaned up on ${localIP}:$relayPort"
         }
-
-        Send-Report -CallbackUrl $Packet.callback_url -Report $unmanagedReport -Token $Config.token
     }
 }
-
 # ── Main packet handler ───────────────────────────────────────────────────────
 function Invoke-PacketHandler {
     param([byte[]]$Data, [string]$SenderIP, [object]$Config)
@@ -547,40 +776,39 @@ function Invoke-PacketHandler {
     $mode        = $payload.mode
     $target      = $payload.target
     $callbackUrl = $payload.callback_url
+    $relayDepth  = [int]$payload.relay_depth
 
     if (-not $requestId -or -not $callbackUrl) {
-        Write-Warn "Packet missing request_id or callback_url — dropped"
+        Write-Warn "Packet missing request_id or callback_url - dropped"
         return
     }
 
     if (Test-AlreadySeen -RequestId $requestId) {
-        Write-Debug2 "Duplicate request_id $requestId — ignored"
+        Write-Debug2 "Duplicate request_id $requestId - ignored"
         return
     }
 
-    Write-Info "Processing discovery request: mode=$mode id=$requestId from=$SenderIP"
+    Write-Info "Discovery request: mode=$mode depth=$relayDepth id=$requestId from=$SenderIP"
 
-    $adapters    = Get-NetworkAdapters
-    $myHostname  = $env:COMPUTERNAME
-    $myBuilding  = $Config.building
-    $myRoom      = $Config.room
+    $adapters   = Get-NetworkAdapters
+    $myHostname = $env:COMPUTERNAME
+    $myBuilding = $Config.building
+    $myRoom     = $Config.room
 
-    # Check if this machine is target
+    # Self-report
     $shouldRespond = $false
     if ($mode -eq 'full') {
         $shouldRespond = $true
-    } elseif ($mode -in @('targeted_mac','targeted_ip')) {
+    } elseif ($mode -in @('targeted_mac', 'targeted_ip')) {
         $shouldRespond = Test-IsTarget -Adapters $adapters -Mode $mode -Target $target
         if (-not $shouldRespond) {
-            Write-Debug2 "Not the target ($target) — not responding"
+            Write-Debug2 "Not the target ($target) - not responding"
         }
     }
 
     if ($shouldRespond) {
-        # Pick primary active adapter
         $primary = $adapters | Select-Object -First 1
-
-        $report = @{
+        $report  = @{
             token          = $Config.token
             request_id     = $requestId
             hostname       = $myHostname
@@ -596,17 +824,26 @@ function Invoke-PacketHandler {
             relay_room     = ''
             vendor         = if ($primary) { Get-MacVendor -MAC $primary.MAC } else { '' }
         }
-
-        # Send report to the server
         Send-Report -CallbackUrl $callbackUrl -Report $report -Token $Config.token
     }
 
-    # Hotspot Relay check
-    $hotspot = Get-HotspotAdapter
-    if ($null -ne $hotspot) {
-        Invoke-HotspotDiscovery -Packet $payload -Config $Config `
-                               -MyHostname $myHostname -MyBuilding $myBuilding `
-                               -MyRoom $myRoom -Hotspot $hotspot
+    # Relay into secondary subnets if depth allows
+    if ($relayDepth -ge $MAX_RELAY_DEPTH) {
+        Write-Warn "Relay depth $relayDepth >= $MAX_RELAY_DEPTH - skipping rebroadcast"
+        return
+    }
+
+    $relayNets = Get-RelayNetworks -SenderIP $SenderIP
+    if (@($relayNets).Count -eq 0) {
+        Write-Debug2 "No secondary relay subnets detected"
+        return
+    }
+
+    Write-Info "Relaying into $(@($relayNets).Count) secondary subnet(s)"
+    foreach ($net in @($relayNets)) {
+        Invoke-SubnetRelay -Packet $payload -Config $Config `
+                           -MyHostname $myHostname -MyBuilding $myBuilding `
+                           -MyRoom $myRoom -RelayNet $net
     }
 }
 
@@ -653,7 +890,10 @@ function Start-AgentListener {
             } catch [System.Net.Sockets.SocketException] {
                 continue
             } catch {
-                if ($script:Running) { Write-Err "UDP receive error: $_" }
+                if ($script:Running) { 
+                    Write-Err ("UDP receive error:`n" + ($_ | Out-String))
+                    Write-Err ("Stack:`n" + $_.ScriptStackTrace)
+                 }
             }
         }
     } finally {
@@ -662,7 +902,7 @@ function Start-AgentListener {
     }
 }
 
-# Entry point — only execute when run directly (not dot-sourced/imported)
+# Entry point
 if ($MyInvocation.InvocationName -ne '.') {
     Start-AgentListener
 }

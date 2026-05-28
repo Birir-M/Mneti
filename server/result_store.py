@@ -1,8 +1,8 @@
 """
 Mneti - Thread-safe in-memory result store with TTL expiry.
-No persistent database required — keeps memory footprint minimal.
+Tracks last_activity per session so the dashboard can poll until
+results stop arriving rather than using a fixed-duration timeout.
 """
-
 import threading
 import time
 import logging
@@ -10,31 +10,31 @@ from datetime import datetime, timezone
 
 log = logging.getLogger("mneti.store")
 
-
-_TTL = 3600  # 1 hour default
+_TTL = 3600  # 1 hour
 
 
 class ResultStore:
     def __init__(self, ttl: int = _TTL):
-        self._ttl = ttl
+        self._ttl  = ttl
         self._lock = threading.Lock()
-        self._sessions: dict = {}   # request_id → session dict
-        self._history: list = []    # Summarised past sessions
-
-        # Background cleanup thread
-        t = threading.Thread(target=self._reap, daemon=True)
-        t.start()
+        self._sessions: dict = {}
+        self._history:  list = []
+        threading.Thread(target=self._reap, daemon=True).start()
 
     # ── Session lifecycle ─────────────────────────────────────────────────────
 
     def init_session(self, request_id: str, discovery_type: str):
+        now = time.monotonic()
         with self._lock:
             self._sessions[request_id] = {
-                "request_id": request_id,
-                "type": discovery_type,
-                "started_at": datetime.now(timezone.utc).isoformat(),
-                "devices": [],
-                "expires_at": time.monotonic() + self._ttl,
+                "request_id":    request_id,
+                "type":          discovery_type,
+                "started_at":    datetime.now(timezone.utc).isoformat(),
+                "devices":       [],
+                "expires_at":    now + self._ttl,
+                # last_activity lets the dashboard detect when results have
+                # stopped arriving without needing a fixed poll window.
+                "last_activity": now,
             }
 
     def session_exists(self, request_id: str) -> bool:
@@ -47,32 +47,46 @@ class ResultStore:
             if not session:
                 log.warning("add_result: unknown request_id %s", request_id)
                 return
-            # Deduplicate by MAC
-            mac = device.get("mac", "").lower()
-            existing_macs = {d.get("mac", "").lower() for d in session["devices"]}
-            if mac and mac in existing_macs:
-                log.debug("Duplicate MAC %s for %s — skipped", mac, request_id)
-                return
+
+            mac = device.get("mac", "").strip().lower()
+
+            # Deduplicate only on real non-empty MACs.
+            # Blank-MAC unmanaged devices (phones, IoT) must all be stored.
+            if mac:
+                existing_macs = {
+                    d.get("mac", "").strip().lower()
+                    for d in session["devices"]
+                    if d.get("mac", "").strip()
+                }
+                if mac in existing_macs:
+                    log.debug("Duplicate MAC %s for %s — skipped", mac, request_id)
+                    return
+
             session["devices"].append(device)
+            session["last_activity"] = time.monotonic()
 
     def get(self, request_id: str) -> dict | None:
         with self._lock:
             session = self._sessions.get(request_id)
             if not session:
                 return None
-            return dict(session)  # shallow copy to avoid external mutation
+            # Expose seconds-since-last-activity so the dashboard JS can
+            # decide to stop polling when this number stays high (e.g. > 60s).
+            result = dict(session)
+            result["seconds_since_activity"] = time.monotonic() - session["last_activity"]
+            return result
 
     # ── History ───────────────────────────────────────────────────────────────
 
     def get_history(self) -> list:
         with self._lock:
-            return list(self._history[-50:])  # last 50 sessions
+            return list(self._history[-50:])
 
     def _archive_session(self, session: dict):
         summary = {
-            "request_id": session["request_id"],
-            "type": session["type"],
-            "started_at": session["started_at"],
+            "request_id":  session["request_id"],
+            "type":        session["type"],
+            "started_at":  session["started_at"],
             "device_count": len(session["devices"]),
         }
         self._history.append(summary)
@@ -82,7 +96,6 @@ class ResultStore:
     # ── TTL reaper ────────────────────────────────────────────────────────────
 
     def _reap(self):
-        """Background thread: evict expired sessions every 60 s."""
         while True:
             time.sleep(60)
             now = time.monotonic()

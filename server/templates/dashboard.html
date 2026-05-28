@@ -507,32 +507,57 @@
 
     <!-- ── JavaScript Controllers ── -->
     <script>
+        // Replace the entire <script> block in dashboard.html with this content.
+        //
+        // Key changes vs original:
+        //   1. No fixed poll timeout. Instead, polls until the server reports that
+        //      no new results have arrived for IDLE_STOP_SECONDS (60s). This handles
+        //      the dual-subnet case where the second ARP sweep starts ~4 min after
+        //      the first broadcast.
+        //   2. Live status line shows device count + idle countdown.
+        //   3. Relay attribution column only shows content when type === 'relayed'
+        //      (unmanaged ARP-discovered devices no longer show "via X").
+
         let currentRequestId = null;
         let pollTimer = null;
+        let countdownTimer = null;
         let pollStart = null;
+
+        // Stop polling when no new report has arrived for this long.
+        const IDLE_STOP_SECONDS = 60;
+        // Hard ceiling — stop regardless after 20 min (safety valve).
+        const MAX_POLL_SECONDS = 1200;
 
         function showSection(name) {
             document.getElementById('results-section').style.display = name === 'discover' ? '' : 'none';
             document.getElementById('inputs-row').style.display = name === 'discover' ? '' : 'none';
             document.getElementById('history-section').style.display = name === 'history' ? '' : 'none';
-
-            document.getElementById('nav-discover').classList.remove('active');
-            document.getElementById('nav-history').classList.remove('active');
-
-            if (name === 'discover') {
-                document.getElementById('nav-discover').classList.add('active');
-            } else {
-                document.getElementById('nav-history').classList.add('active');
-                loadHistory();
-            }
+            document.getElementById('nav-discover').classList.toggle('active', name === 'discover');
+            document.getElementById('nav-history').classList.toggle('active', name === 'history');
+            if (name === 'history') loadHistory();
         }
 
-        function toast(msg, type = 'info') {
+        function toast(msg) {
             const el = document.getElementById('toast');
             el.textContent = msg;
             el.className = 'show';
             clearTimeout(el._timer);
             el._timer = setTimeout(() => el.className = '', 3500);
+        }
+
+        // Called every second while scanning.
+        function updateStatus(secsSinceActivity) {
+            const totalElapsed = Math.floor((Date.now() - pollStart) / 1000);
+            const idleFor = Math.round(secsSinceActivity);
+            const idleRemain = Math.max(0, IDLE_STOP_SECONDS - idleFor);
+            const found = document.querySelectorAll('#results-body tbody tr').length;
+            const el = document.getElementById('results-status');
+            if (!el) return;
+            if (idleFor < 5) {
+                el.textContent = `Scanning · ${found} device(s) found · ${totalElapsed}s elapsed`;
+            } else {
+                el.textContent = `Scanning · ${found} device(s) · idle ${idleFor}s · stopping in ${idleRemain}s`;
+            }
         }
 
         function setLoading(loading) {
@@ -541,25 +566,33 @@
                 bar.classList.add('active');
                 document.getElementById('btn-targeted').disabled = true;
                 document.getElementById('btn-full').disabled = true;
-                document.getElementById('results-status').textContent = 'Scanning network, collecting responses...';
+                if (countdownTimer) clearInterval(countdownTimer);
+                countdownTimer = setInterval(() => {
+                    // Will be updated properly on the next fetchResults cycle;
+                    // this just keeps the clock ticking between poll intervals.
+                    const elapsed = Math.floor((Date.now() - pollStart) / 1000);
+                    const el = document.getElementById('results-status');
+                    if (el && el.textContent.includes('elapsed')) {
+                        el.textContent = el.textContent.replace(/\d+s elapsed/, elapsed + 's elapsed');
+                    }
+                }, 1000);
             } else {
                 bar.classList.remove('active');
                 setTimeout(() => { bar.style.transition = 'none'; bar.style.transform = 'scaleX(0)'; }, 500);
                 setTimeout(() => { bar.style.transition = 'transform 4.5s linear'; }, 600);
                 document.getElementById('btn-targeted').disabled = false;
                 document.getElementById('btn-full').disabled = false;
+                if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
             }
         }
 
         async function triggerTargeted() {
             const target = document.getElementById('target-input').value.trim();
             const mode = document.getElementById('target-mode').value;
-            if (!target) { toast('Please input a target MAC or IP address'); return; }
-
+            if (!target) { toast('Please enter a target MAC or IP address'); return; }
             clearResults();
             setLoading(true);
-            document.getElementById('results-label').textContent = `Targeted Search: ${target}`;
-
+            document.getElementById('results-label').textContent = `Targeted search: ${target}`;
             try {
                 const res = await fetch('/api/discover/targeted', {
                     method: 'POST',
@@ -579,8 +612,7 @@
         async function triggerFullDiscovery() {
             clearResults();
             setLoading(true);
-            document.getElementById('results-label').textContent = 'Full Subnet Scan';
-
+            document.getElementById('results-label').textContent = 'Full network scan';
             try {
                 const res = await fetch('/api/discover/all', { method: 'POST' });
                 const data = await res.json();
@@ -596,16 +628,7 @@
         function startPolling() {
             if (pollTimer) clearInterval(pollTimer);
             pollStart = Date.now();
-            pollTimer = setInterval(async () => {
-                await fetchResults();
-                if (Date.now() - pollStart > 5200) {
-                    clearInterval(pollTimer);
-                    setLoading(false);
-                    const count = document.querySelectorAll('#results-body tbody tr').length;
-                    toast(count > 0 ? `Discovery scan complete. Found ${count} device(s).` : 'No response received from target subnet.');
-                    document.getElementById('results-status').textContent = `Completed · ${count} devices found`;
-                }
-            }, 800);
+            pollTimer = setInterval(fetchResults, 1000);
         }
 
         async function fetchResults() {
@@ -614,7 +637,24 @@
                 const res = await fetch(`/api/results/${currentRequestId}`);
                 if (!res.ok) return;
                 const data = await res.json();
+
                 renderResults(data.devices || []);
+
+                const secs = data.seconds_since_activity ?? 0;
+                const elapsed = (Date.now() - pollStart) / 1000;
+                updateStatus(secs);
+
+                // Stop when idle for long enough OR hard ceiling hit.
+                const shouldStop = (secs >= IDLE_STOP_SECONDS) || (elapsed >= MAX_POLL_SECONDS);
+                if (shouldStop) {
+                    clearInterval(pollTimer);
+                    setLoading(false);
+                    const count = (data.devices || []).length;
+                    const reason = elapsed >= MAX_POLL_SECONDS ? '20-min limit reached' : `no new devices for ${IDLE_STOP_SECONDS}s`;
+                    toast(`Scan complete (${reason}) — ${count} device(s) found`);
+                    document.getElementById('results-status').textContent =
+                        `Completed · ${count} device(s) found`;
+                }
             } catch (_) { }
         }
 
@@ -627,9 +667,7 @@
             document.getElementById('stat-managed').textContent = managed;
             document.getElementById('stat-relayed').textContent = relayed;
             document.getElementById('stat-unmanaged').textContent = unmanaged;
-
-            const exportBtn = document.getElementById('export-btn');
-            exportBtn.disabled = devices.length === 0;
+            document.getElementById('export-btn').disabled = devices.length === 0;
 
             if (devices.length === 0) {
                 document.getElementById('results-body').innerHTML =
@@ -639,49 +677,48 @@
 
             const rows = devices.map(d => {
                 let badge = '<span class="badge">● CLIENT</span>';
-                if (d.type === 'managed') {
-                    badge = '<span class="badge badge-managed">● MANAGED</span>';
-                } else if (d.type === 'relayed') {
-                    badge = '<span class="badge badge-relayed">↗ RELAYED</span>';
-                } else if (d.type === 'unmanaged') {
-                    badge = '<span class="badge badge-unmanaged">○ UNMANAGED</span>';
-                }
+                if (d.type === 'managed') badge = '<span class="badge badge-managed">● MANAGED</span>';
+                else if (d.type === 'relayed') badge = '<span class="badge badge-relayed">↗ RELAYED</span>';
+                else if (d.type === 'unmanaged') badge = '<span class="badge badge-unmanaged">○ UNMANAGED</span>';
+
+                // Relay info only shown for type=relayed (managed device behind hotspot).
+                // Unmanaged ARP-discovered devices are peers on the subnet, not hotspot
+                // clients, so they get no relay attribution.
+                const relayLine = (d.type === 'relayed' && d.relay_host)
+                    ? `<div class="relay-info">via: ${escHtml(d.relay_host)} (${escHtml(d.relay_building)} / ${escHtml(d.relay_room)})</div>`
+                    : '';
 
                 const location = d.building
-                    ? `<span>${escHtml(d.building)} · ${escHtml(d.room)}</span>`
-                    : '<span style="color: #999;">—</span>';
-
-                const relay = d.relay_host
-                    ? `<div class="relay-info">Relayed via: ${escHtml(d.relay_host)} (${escHtml(d.relay_building)} / ${escHtml(d.relay_room)})</div>` : '';
+                    ? `${escHtml(d.building)} · ${escHtml(d.room)}`
+                    : '<span style="color:#999">—</span>';
 
                 const ts = d.timestamp ? d.timestamp.replace('T', ' ').substring(0, 19) : '—';
 
                 return `<tr>
-                    <td>${badge}${relay}</td>
-                    <td><strong>${escHtml(d.hostname || '—')}</strong><br><span class="mono" style="color: #666; font-size: 11px;">${escHtml(d.ip)}</span></td>
-                    <td class="mono">${escHtml(d.mac || '—')}</td>
-                    <td>${location}</td>
-                    <td class="mono">${escHtml(d.username || '—')}</td>
-                    <td>${escHtml(d.vendor || '—')}</td>
-                    <td class="mono" style="font-size: 11px; color: #666;">${ts}</td>
-                </tr>`;
+            <td>${badge}${relayLine}</td>
+            <td><strong>${escHtml(d.hostname || '—')}</strong><br>
+                <span class="mono" style="font-size:11px;color:#666">${escHtml(d.ip)}</span></td>
+            <td class="mono">${escHtml(d.mac || '—')}</td>
+            <td>${location}</td>
+            <td class="mono">${escHtml(d.username || '—')}</td>
+            <td>${escHtml(d.vendor || '—')}</td>
+            <td class="mono" style="font-size:11px;color:#666">${ts}</td>
+        </tr>`;
             }).join('');
 
             document.getElementById('results-body').innerHTML = `
-            <table>
-                <thead>
-                    <tr>
-                        <th>Connection Type</th>
-                        <th>Device Name / IP</th>
-                        <th>MAC Address</th>
-                        <th>Physical Location</th>
-                        <th>Active User</th>
-                        <th>Hardware Vendor</th>
-                        <th>Discovery Timestamp</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>`;
+    <table>
+        <thead><tr>
+            <th>Type</th>
+            <th>Hostname / IP</th>
+            <th>MAC address</th>
+            <th>Location</th>
+            <th>Active user</th>
+            <th>Vendor</th>
+            <th>Timestamp</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+    </table>`;
         }
 
         async function loadHistory() {
@@ -689,26 +726,22 @@
                 const res = await fetch('/api/history');
                 const data = await res.json();
                 if (!data.length) {
-                    document.getElementById('history-body').innerHTML = '<div class="empty-state">No sessions found in history.</div>';
+                    document.getElementById('history-body').innerHTML =
+                        '<div class="empty-state">No sessions found.</div>';
                     return;
                 }
                 const rows = data.map(s => `<tr>
-                    <td class="mono">${s.request_id.substring(0, 8)}…</td>
-                    <td><span class="badge">${s.type.toUpperCase()}</span></td>
-                    <td>${s.device_count} device(s) responded</td>
-                    <td class="mono" style="font-size: 11px; color: #666;">${(s.started_at || '').replace('T', ' ').substring(0, 19)}</td>
-                </tr>`).join('');
+            <td class="mono">${s.request_id.substring(0, 8)}…</td>
+            <td><span class="badge">${s.type.toUpperCase()}</span></td>
+            <td>${s.device_count} device(s)</td>
+            <td class="mono" style="font-size:11px;color:#666">${(s.started_at || '').replace('T', ' ').substring(0, 19)}</td>
+        </tr>`).join('');
                 document.getElementById('history-body').innerHTML = `<table>
-                    <thead>
-                        <tr>
-                            <th>Session ID</th>
-                            <th>Scan Type</th>
-                            <th>Discovery Count</th>
-                            <th>Trigger Timestamp</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>`;
+            <thead><tr>
+                <th>Session ID</th><th>Type</th><th>Devices</th><th>Started</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
             } catch (_) { }
         }
 
@@ -719,19 +752,22 @@
         function clearResults() {
             currentRequestId = null;
             if (pollTimer) clearInterval(pollTimer);
-            document.getElementById('stat-total').textContent = '—';
-            document.getElementById('stat-managed').textContent = '—';
-            document.getElementById('stat-relayed').textContent = '—';
-            document.getElementById('stat-unmanaged').textContent = '—';
+            if (countdownTimer) clearInterval(countdownTimer);
+            pollStart = null;
+            ['stat-total', 'stat-managed', 'stat-relayed', 'stat-unmanaged'].forEach(id => {
+                document.getElementById(id).textContent = '—';
+            });
             document.getElementById('results-body').innerHTML =
-                '<div class="empty-state">Initiate a targeted search or full scan above to locate devices on the network.</div>';
-            document.getElementById('results-label').textContent = 'Discovery Results';
+                '<div class="empty-state">Initiate a search or full scan above to locate devices.</div>';
+            document.getElementById('results-label').textContent = 'Discovery results';
             document.getElementById('results-status').textContent = '';
             document.getElementById('export-btn').disabled = true;
         }
 
         function escHtml(str) {
-            return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            return String(str || '')
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
     </script>
 </body>
