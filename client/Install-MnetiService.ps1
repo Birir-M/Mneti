@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Mneti Agent — Windows Service Installer (Task Scheduler)
@@ -107,7 +107,52 @@ try {
     exit 1
 }
 
-# 4. Start the Task immediately
+# 4. Configure Windows Firewall Rules
+Write-Host "  [*] Configuring Windows Firewall rules for Mneti Agent..." -ForegroundColor Cyan
+try {
+    # Check if NetSecurity module is available (Windows 8 / Windows Server 2012+)
+    if (Get-Module -ListAvailable -Name NetSecurity) {
+        # Allow UDP 5000 (Discovery packets)
+        if (-not (Get-NetFirewallRule -Name "Mneti_UDP_5000" -ErrorAction SilentlyContinue)) {
+            New-NetFirewallRule -Name "Mneti_UDP_5000" -DisplayName "Mneti Agent Discovery (UDP 5000)" `
+                                -Description "Allows incoming UDP discovery packets from the Mneti Server." `
+                                -Direction Inbound -Protocol UDP -LocalPort 5000 -Action Allow -Enabled True | Out-Null
+            Write-Host "  [+] Added firewall rule for UDP port 5000." -ForegroundColor Green
+        } else {
+            Write-Host "  [.] Firewall rule for UDP port 5000 already exists." -ForegroundColor Gray
+        }
+
+        # Allow TCP 5002-5005 (Relay callbacks)
+        if (-not (Get-NetFirewallRule -Name "Mneti_TCP_Relay" -ErrorAction SilentlyContinue)) {
+            New-NetFirewallRule -Name "Mneti_TCP_Relay" -DisplayName "Mneti Agent Relay Callback (TCP 5002-5005)" `
+                                -Description "Allows incoming HTTP report forwards from hotspot clients." `
+                                -Direction Inbound -Protocol TCP -LocalPort 5002,5003,5004,5005 -Action Allow -Enabled True | Out-Null
+            Write-Host "  [+] Added firewall rule for TCP ports 5002-5005." -ForegroundColor Green
+        } else {
+            Write-Host "  [.] Firewall rule for TCP ports 5002-5005 already exists." -ForegroundColor Gray
+        }
+    } else {
+        # Fallback to legacy netsh commands
+        netsh advfirewall firewall show rule name="Mneti Agent Discovery (UDP 5000)" > $null
+        if ($LASTEXITCODE -ne 0) {
+            netsh advfirewall firewall add rule name="Mneti Agent Discovery (UDP 5000)" `
+                dir=in action=allow protocol=UDP localport=5000 enable=yes > $null
+            Write-Host "  [+] Added firewall rule for UDP port 5000 via Netsh." -ForegroundColor Green
+        }
+        
+        netsh advfirewall firewall show rule name="Mneti Agent Relay Callback (TCP 5002-5005)" > $null
+        if ($LASTEXITCODE -ne 0) {
+            netsh advfirewall firewall add rule name="Mneti Agent Relay Callback (TCP 5002-5005)" `
+                dir=in action=allow protocol=TCP localport=5002-5005 enable=yes > $null
+            Write-Host "  [+] Added firewall rule for TCP ports 5002-5005 via Netsh." -ForegroundColor Green
+        }
+    }
+} catch {
+    Write-Host "  [!] WARNING: Failed to configure firewall rules: $_" -ForegroundColor Yellow
+    Write-Host "      You may need to manually open UDP port 5000 and TCP port 5002 in Windows Firewall." -ForegroundColor Yellow
+}
+
+# 5. Start the Task immediately
 Write-Host "  [*] Starting Mneti Agent background task..." -ForegroundColor Cyan
 try {
     Start-ScheduledTask -TaskName $TASK_NAME

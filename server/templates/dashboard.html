@@ -478,9 +478,16 @@
 
                 <!-- Results Table Box -->
                 <div class="content-box" id="results-section">
-                    <div class="box-header">
-                        <span id="results-label">Discovery Results</span>
-                        <span id="results-status" style="font-size: 12px; color: #6c757d; font-weight: normal;"></span>
+                    <div class="box-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <span id="results-label">Discovery Results</span>
+                            <span id="results-status" style="font-size: 12px; color: #6c757d; font-weight: normal; margin-left: 10px;"></span>
+                        </div>
+                        <div id="search-container" style="display: none;">
+                            <input type="text" id="search-filter" placeholder="🔍 Search IP, MAC, room, etc..." 
+                                   style="padding: 5px 10px; font-size: 13px; border: 1px solid #cccccc; border-radius: 4px; width: 220px;"
+                                   oninput="filterResults()">
+                        </div>
                     </div>
                     <div id="results-body">
                         <div class="empty-state">
@@ -522,9 +529,10 @@
         let pollTimer = null;
         let countdownTimer = null;
         let pollStart = null;
+        let currentDevices = [];
 
         // Stop polling when no new report has arrived for this long.
-        const IDLE_STOP_SECONDS = 60;
+        const IDLE_STOP_SECONDS = 600;
         // Hard ceiling — stop regardless after 20 min (safety valve).
         const MAX_POLL_SECONDS = 1200;
 
@@ -659,6 +667,8 @@
         }
 
         function renderResults(devices) {
+            currentDevices = devices;
+            
             const managed = devices.filter(d => d.type === 'managed').length;
             const relayed = devices.filter(d => d.type === 'relayed').length;
             const unmanaged = devices.filter(d => d.type === 'unmanaged').length;
@@ -669,21 +679,50 @@
             document.getElementById('stat-unmanaged').textContent = unmanaged;
             document.getElementById('export-btn').disabled = devices.length === 0;
 
-            if (devices.length === 0) {
+            const searchContainer = document.getElementById('search-container');
+            if (searchContainer) {
+                searchContainer.style.display = devices.length > 0 ? 'block' : 'none';
+            }
+
+            displayFilteredResults();
+        }
+
+        function filterResults() {
+            displayFilteredResults();
+        }
+
+        function displayFilteredResults() {
+            if (!currentDevices || currentDevices.length === 0) {
                 document.getElementById('results-body').innerHTML =
                     '<div class="empty-state">Waiting for devices to respond...</div>';
                 return;
             }
 
-            const rows = devices.map(d => {
+            const query = (document.getElementById('search-filter')?.value || '').trim().toLowerCase();
+            
+            const filtered = currentDevices.filter(d => {
+                if (!query) return true;
+                return (d.hostname || '').toLowerCase().includes(query) ||
+                       (d.ip || '').toLowerCase().includes(query) ||
+                       (d.mac || '').toLowerCase().includes(query) ||
+                       (d.building || '').toLowerCase().includes(query) ||
+                       (d.room || '').toLowerCase().includes(query) ||
+                       (d.username || '').toLowerCase().includes(query) ||
+                       (d.vendor || '').toLowerCase().includes(query);
+            });
+
+            if (filtered.length === 0) {
+                document.getElementById('results-body').innerHTML =
+                    '<div class="empty-state">No matching devices found.</div>';
+                return;
+            }
+
+            const rows = filtered.map(d => {
                 let badge = '<span class="badge">● CLIENT</span>';
                 if (d.type === 'managed') badge = '<span class="badge badge-managed">● MANAGED</span>';
                 else if (d.type === 'relayed') badge = '<span class="badge badge-relayed">↗ RELAYED</span>';
                 else if (d.type === 'unmanaged') badge = '<span class="badge badge-unmanaged">○ UNMANAGED</span>';
 
-                // Relay info only shown for type=relayed (managed device behind hotspot).
-                // Unmanaged ARP-discovered devices are peers on the subnet, not hotspot
-                // clients, so they get no relay attribution.
                 const relayLine = (d.type === 'relayed' && d.relay_host)
                     ? `<div class="relay-info">via: ${escHtml(d.relay_host)} (${escHtml(d.relay_building)} / ${escHtml(d.relay_room)})</div>`
                     : '';
@@ -692,7 +731,19 @@
                     ? `${escHtml(d.building)} · ${escHtml(d.room)}`
                     : '<span style="color:#999">—</span>';
 
-                const ts = d.timestamp ? d.timestamp.replace('T', ' ').substring(0, 19) : '—';
+                // Convert ISO UTC string to browser local time
+                let ts = '—';
+                if (d.timestamp) {
+                    try {
+                        const dt = new Date(d.timestamp);
+                        const pad = (n) => String(n).padStart(2, '0');
+                        const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+                        const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+                        ts = `${dateStr} ${timeStr}`;
+                    } catch (_) {
+                        ts = d.timestamp.replace('T', ' ').substring(0, 19);
+                    }
+                }
 
                 return `<tr>
             <td>${badge}${relayLine}</td>
@@ -751,12 +802,20 @@
 
         function clearResults() {
             currentRequestId = null;
+            currentDevices = [];
             if (pollTimer) clearInterval(pollTimer);
             if (countdownTimer) clearInterval(countdownTimer);
             pollStart = null;
             ['stat-total', 'stat-managed', 'stat-relayed', 'stat-unmanaged'].forEach(id => {
                 document.getElementById(id).textContent = '—';
             });
+            
+            const filterInput = document.getElementById('search-filter');
+            if (filterInput) filterInput.value = '';
+            
+            const searchContainer = document.getElementById('search-container');
+            if (searchContainer) searchContainer.style.display = 'none';
+
             document.getElementById('results-body').innerHTML =
                 '<div class="empty-state">Initiate a search or full scan above to locate devices.</div>';
             document.getElementById('results-label').textContent = 'Discovery results';

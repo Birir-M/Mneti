@@ -422,11 +422,12 @@ function Invoke-SubnetRelay {
     # Start relay HTTP listener using unique high random port
     # ------------------------------------------------------------------
 
-    for ($attempt = 1; $attempt -le 5; $attempt++) {
+    for ($attempt = 0; $attempt -le 4; $attempt++) {
 
         try {
 
-            $relayPort = Get-Random -Minimum 5500 -Maximum 65000
+            # Use fixed RELAY_HTTP_PORT (5002) as primary; fallback to 5003-5006 if occupied
+            $relayPort = $RELAY_HTTP_PORT + $attempt
 
             $localCallbackUrl = "http://$($localIP):$relayPort/api/report"
 
