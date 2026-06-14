@@ -48,3 +48,6 @@ logs/
 # Windows generated
 Desktop.ini
 
+data/
+server.pid
+server_log.txt

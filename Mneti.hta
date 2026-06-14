@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Mneti Server Control</title>
+<HTA:APPLICATION 
+    ID="MnetiControl"
+    APPLICATIONNAME="Mneti Server"
+    SCROLL="no"
+    SINGLEINSTANCE="yes"
+    WINDOWSTATE="normal"
+    BORDER="thick"
+    CAPTION="yes"
+    SHOWINTASKBAR="yes"
+    MAXIMIZEBUTTON="no"
+    MINIMIZEBUTTON="yes"
+/>
+
+<style>
+    body {
+        font-family: "Segoe UI", Arial, sans-serif;
+        background: #ffffff;
+        color: #000000;
+        text-align: center;
+        margin: 0;
+        padding: 20px;
+    }
+    h2 { margin-bottom: 10px; font-weight: normal; }
+    #status {
+        font-size: 14px;
+        margin: 10px 0;
+        padding: 6px;
+        border: 1px solid #000;
+    }
+    button {
+        font-size: 14px;
+        padding: 8px 20px;
+        margin: 6px;
+        border: 1px solid #000;
+        background: #f0f0f0;
+        cursor: pointer;
+        width: 140px;
+    }
+    button:hover { background: #e0e0e0; }
+    button:disabled {
+        color: #999;
+        cursor: not-allowed;
+    }
+    #log {
+        margin-top: 15px;
+        font-size: 11px;
+        text-align: left;
+        height: 100px;
+        overflow-y: auto;
+        background: #f8f8f8;
+        border: 1px solid #ccc;
+        padding: 6px;
+    }
+</style>
+
+<script language="VBScript">
+
+Dim fso, shell
+Set fso = CreateObject("Scripting.FileSystemObject")
+Set shell = CreateObject("WScript.Shell")
+
+' === CONFIGURE THESE ===
+projectDir   = "C:\Users\ICT\Documents\mneti"
+serverDir    = projectDir & "\server"
+pythonScript = "run_server.py"
+serverURL    = "http://127.0.0.1:5001"
+pidFile      = projectDir & "\server.pid"
+logFile      = projectDir & "\server_log.txt"
+' ========================
+
+Sub Window_OnLoad
+    CheckStatus
+End Sub
+
+Function ProcessExists(pid)
+    Dim p
+    On Error Resume Next
+    Set p = GetObject("winmgmts:").ExecQuery("Select * from Win32_Process Where ProcessId=" & pid)
+    If p.Count > 0 Then
+        ProcessExists = True
+    Else
+        ProcessExists = False
+    End If
+    On Error Goto 0
+End Function
+
+Sub CheckStatus
+    Dim running
+    running = False
+
+    If fso.FileExists(pidFile) Then
+        Dim f, pid
+        Set f = fso.OpenTextFile(pidFile, 1)
+        pid = Trim(f.ReadLine())
+        f.Close
+        If pid <> "" Then
+            If ProcessExists(pid) Then
+                running = True
+            End If
+        End If
+    End If
+
+    If running Then
+        document.getElementById("status").innerText = "Status: RUNNING"
+        document.getElementById("startBtn").disabled = True
+        document.getElementById("stopBtn").disabled = False
+        document.getElementById("restartBtn").disabled = False
+        document.getElementById("openBtn").disabled = False
+    Else
+        document.getElementById("status").innerText = "Status: STOPPED"
+        document.getElementById("startBtn").disabled = False
+        document.getElementById("stopBtn").disabled = True
+        document.getElementById("restartBtn").disabled = True
+        document.getElementById("openBtn").disabled = True
+        If fso.FileExists(pidFile) Then fso.DeleteFile(pidFile)
+    End If
+End Sub
+
+Sub StartServer
+    document.getElementById("status").innerText = "Starting..."
+
+    Dim tmpVbs
+    tmpVbs = projectDir & "\_start_helper.vbs"
+
+    Dim q
+    q = Chr(34)
+
+    Dim ts
+    Set ts = fso.CreateTextFile(tmpVbs, True)
+    ts.WriteLine "Set sh = CreateObject(" & q & "WScript.Shell" & q & ")"
+    ts.WriteLine "sh.CurrentDirectory = " & q & serverDir & q
+    ts.WriteLine "cmdLine = " & q & "cmd /c python " & pythonScript & " > " & q & " & Chr(34) & " & q & logFile & q & " & Chr(34) & " & q & " 2>&1" & q
+    ts.WriteLine "Set exec = sh.Exec(cmdLine)"
+    ts.WriteLine "Set fso2 = CreateObject(" & q & "Scripting.FileSystemObject" & q & ")"
+    ts.WriteLine "Set f = fso2.CreateTextFile(" & q & pidFile & q & ", True)"
+    ts.WriteLine "f.WriteLine exec.ProcessID"
+    ts.WriteLine "f.Close"
+    ts.Close
+
+    On Error Resume Next
+    If fso.FileExists(logFile) Then fso.DeleteFile(logFile)
+    On Error Goto 0
+
+    shell.Run "wscript.exe " & q & tmpVbs & q, 0, False
+
+    AddLog "Starting server..."
+    window.setTimeout "FinishStart()", 4000
+End Sub
+
+Sub FinishStart()
+    On Error Resume Next
+    fso.DeleteFile(projectDir & "\_start_helper.vbs")
+    On Error Goto 0
+    CheckStatus
+    AddLog "Server started. Opening browser..."
+    shell.Run serverURL
+    AddLog "If page does not load, click 'View Log' to see errors."
+End Sub
+
+Sub StopServer
+    document.getElementById("status").innerText = "Stopping..."
+
+    If fso.FileExists(pidFile) Then
+        Dim f, pid
+        Set f = fso.OpenTextFile(pidFile, 1)
+        pid = Trim(f.ReadLine())
+        f.Close
+
+        If pid <> "" Then
+            shell.Run "taskkill /PID " & pid & " /T /F", 0, True
+            AddLog "Stopped process " & pid
+        End If
+
+        fso.DeleteFile(pidFile)
+    End If
+
+    window.setTimeout "CheckStatus()", 1000
+End Sub
+
+Sub RestartServer
+    StopServer
+    AddLog "Restarting..."
+    window.setTimeout "StartServer()", 2000
+End Sub
+
+Sub OpenBrowser
+    shell.Run serverURL
+End Sub
+
+Sub ViewLog
+    If fso.FileExists(logFile) Then
+        shell.Run "notepad.exe """ & logFile & """"
+    Else
+        AddLog "No log file found yet."
+    End If
+End Sub
+
+Sub AddLog(msg)
+    Dim logDiv
+    Set logDiv = document.getElementById("log")
+    logDiv.innerHTML = logDiv.innerHTML & "&gt; " & msg & "<br>"
+    logDiv.scrollTop = logDiv.scrollHeight
+End Sub
+
+</script>
+</head>
+<body>
+    <h2>Mneti Server Control</h2>
+    <div id="status">Checking...</div>
+
+    <div>
+        <button id="startBtn" onclick="StartServer">Start</button>
+        <button id="stopBtn" onclick="StopServer">Stop</button>
+    </div>
+    <div>
+        <button id="restartBtn" onclick="RestartServer">Restart</button>
+        <button id="openBtn" onclick="OpenBrowser">Open Browser</button>
+    </div>
+    <div>
+        <button onclick="ViewLog">View Log</button>
+    </div>
+
+    <div id="log"></div>
+</body>
+</html>

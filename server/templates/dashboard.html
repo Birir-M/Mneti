@@ -181,6 +181,16 @@
             border-color: #1d2124;
         }
 
+        .btn-danger {
+            background-color: #fff5f5;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        .btn-danger:hover {
+            background-color: #f8d7da;
+        }
+
         .btn-sm {
             padding: 4px 8px;
             font-size: 11px;
@@ -194,8 +204,8 @@
         /* ── Stats Display ── */
         .stats-bar {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
             margin-bottom: 20px;
         }
 
@@ -203,22 +213,63 @@
             background-color: #f8f9fa;
             border: 1px solid #dee2e6;
             border-radius: 4px;
-            padding: 12px 15px;
+            padding: 10px 12px;
             text-align: center;
+            cursor: pointer;
+            transition: background 0.12s, border-color 0.12s;
+            user-select: none;
+        }
+
+        .stat-box:hover {
+            background-color: #e9ecef;
+            border-color: #adb5bd;
+        }
+
+        .stat-box.active-filter {
+            border-color: #343a40;
+            background-color: #e9ecef;
+            box-shadow: inset 0 0 0 2px #343a40;
+        }
+
+        .stat-box.stat-all {
+            border-top: 3px solid #6c757d;
+        }
+
+        .stat-box.stat-managed {
+            border-top: 3px solid #0366d6;
+        }
+
+        .stat-box.stat-managed-hotspot {
+            border-top: 3px solid #28a745;
+        }
+
+        .stat-box.stat-unmanaged-hotspot {
+            border-top: 3px solid #f59f00;
+        }
+
+        .stat-box.stat-unmanaged {
+            border-top: 3px solid #dc3545;
         }
 
         .stat-num {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: bold;
             color: #111111;
         }
 
         .stat-lbl {
-            font-size: 11px;
+            font-size: 10px;
             color: #6c757d;
             text-transform: uppercase;
             font-weight: bold;
             margin-top: 2px;
+            line-height: 1.3;
+        }
+
+        .stat-hint {
+            font-size: 10px;
+            color: #adb5bd;
+            margin-top: 3px;
         }
 
         /* ── Data Display ── */
@@ -237,6 +288,113 @@
             justify-content: space-between;
             align-items: center;
             font-weight: bold;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        /* ── Filter chips bar ── */
+        .filter-bar {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 8px 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            border: 1px solid #dee2e6;
+            background: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.12s, border-color 0.12s;
+            color: #333;
+        }
+
+        .filter-chip:hover {
+            background: #e9ecef;
+        }
+
+        .filter-chip.active {
+            border-color: #343a40;
+            background: #343a40;
+            color: #fff;
+        }
+
+        .filter-chip .chip-count {
+            display: inline-block;
+            background: rgba(0, 0, 0, 0.12);
+            border-radius: 8px;
+            padding: 0 5px;
+            font-size: 10px;
+            font-weight: bold;
+            min-width: 18px;
+            text-align: center;
+        }
+
+        .filter-chip.active .chip-count {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .filter-chip.chip-all {
+            border-color: #6c757d;
+        }
+
+        .filter-chip.chip-all.active {
+            background: #6c757d;
+            border-color: #6c757d;
+        }
+
+        .filter-chip.chip-managed {
+            border-color: #0366d6;
+            color: #0366d6;
+        }
+
+        .filter-chip.chip-managed.active {
+            background: #0366d6;
+            border-color: #0366d6;
+            color: #fff;
+        }
+
+        .filter-chip.chip-managed-hotspot {
+            border-color: #28a745;
+            color: #28a745;
+        }
+
+        .filter-chip.chip-managed-hotspot.active {
+            background: #28a745;
+            border-color: #28a745;
+            color: #fff;
+        }
+
+        .filter-chip.chip-unmanaged-hotspot {
+            border-color: #f59f00;
+            color: #c87800;
+        }
+
+        .filter-chip.chip-unmanaged-hotspot.active {
+            background: #f59f00;
+            border-color: #f59f00;
+            color: #fff;
+        }
+
+        .filter-chip.chip-unmanaged {
+            border-color: #dc3545;
+            color: #dc3545;
+        }
+
+        .filter-chip.chip-unmanaged.active {
+            background: #dc3545;
+            border-color: #dc3545;
+            color: #fff;
         }
 
         /* ── Standard Table ── */
@@ -282,22 +440,32 @@
             color: #333333;
         }
 
+        /* Managed — on the main LAN, no hotspot */
         .badge-managed {
             background-color: #e8f4fd;
             border-color: #bbeeef;
             color: #0366d6;
         }
 
-        .badge-relayed {
+        /* Managed device hotspotted through another machine (has Mneti agent) */
+        .badge-managed-hotspot {
             background-color: #eef9f0;
             border-color: #cce8cc;
             color: #28a745;
         }
 
-        .badge-unmanaged {
+        /* Unmanaged device hotspotted (no Mneti agent, location inherited) */
+        .badge-unmanaged-hotspot {
             background-color: #fff9db;
             border-color: #ffe066;
-            color: #f59f00;
+            color: #c87800;
+        }
+
+        /* Unmanaged device on main LAN (no agent, no hotspot) */
+        .badge-unmanaged {
+            background-color: #fff0f0;
+            border-color: #ffcccc;
+            color: #dc3545;
         }
 
         .relay-info {
@@ -349,7 +517,202 @@
             color: #6c757d;
         }
 
-        /* ── Responsive Media Queries ── */
+        .range-entry-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .range-entry-row input[type="text"] {
+            font-family: Consolas, "Liberation Mono", Courier, monospace;
+            font-size: 12px;
+        }
+
+        .range-resolved {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 2px;
+            font-family: Consolas, "Liberation Mono", Courier, monospace;
+        }
+
+        .range-resolved.valid {
+            color: #28a745;
+        }
+
+        .range-resolved.error {
+            color: #dc3545;
+        }
+
+        .range-list-wrap {
+            max-height: 320px;
+            overflow-y: auto;
+        }
+
+        .range-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 15px;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .range-item:last-child {
+            border-bottom: none;
+        }
+
+        .range-item-label {
+            font-family: Consolas, "Liberation Mono", Courier, monospace;
+            font-size: 12px;
+            font-weight: bold;
+            color: #212529;
+        }
+
+        .range-item-detail {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 2px;
+        }
+
+        .range-subnet-hint {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 3px;
+            padding: 10px 12px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #495057;
+        }
+
+        .range-subnet-hint table {
+            width: auto;
+            font-size: 11px;
+            margin-top: 6px;
+        }
+
+        .range-subnet-hint th {
+            background: none;
+            border: none;
+            padding: 2px 12px 2px 0;
+            font-size: 10px;
+            font-weight: bold;
+            color: #868e96;
+            text-transform: uppercase;
+        }
+
+        .range-subnet-hint td {
+            border: none;
+            padding: 2px 12px 2px 0;
+            color: #333;
+            font-family: Consolas, "Liberation Mono", Courier, monospace;
+        }
+
+        .range-subnet-hint tr:hover td {
+            background: none;
+        }
+
+        .help-text {
+            font-size: 11px;
+            color: #6c757d;
+            margin-top: 6px;
+            line-height: 1.6;
+        }
+
+        /* ── IP segmented input ── */
+        .ip-dot {
+            color: #343a40;
+            font-family: Consolas, 'Liberation Mono', Courier, monospace;
+            font-size: 15px;
+            font-weight: bold;
+            user-select: none;
+            flex-shrink: 0;
+            padding: 0 1px;
+        }
+
+        #ip-input-wrap>div:focus-within {
+            border-color: #80bdff !important;
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.15);
+        }
+
+        #ip-o1,
+        #ip-o2,
+        #ip-o3,
+        #ip-o4 {
+            border-radius: 2px;
+            transition: background 0.1s;
+        }
+
+        #ip-o1:focus,
+        #ip-o2:focus,
+        #ip-o3:focus,
+        #ip-o4:focus {
+            background: #e8f0fe;
+        }
+
+        .format-pill {
+            display: inline-block;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 2px;
+            font-family: Consolas, "Liberation Mono", Courier, monospace;
+            font-size: 10px;
+            padding: 1px 5px;
+            color: #333;
+            margin: 1px 2px;
+        }
+
+        /* ── History session detail ── */
+        #history-detail-section {
+            display: none;
+        }
+
+        .history-session-header {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 12px 15px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .history-session-meta {
+            font-size: 12px;
+            color: #555;
+            margin-top: 4px;
+        }
+
+        .history-session-meta span {
+            margin-right: 16px;
+        }
+
+        .history-row-clickable {
+            cursor: pointer;
+        }
+
+        .history-row-clickable:hover td {
+            background-color: #e8f4fd !important;
+        }
+
+        .session-id-link {
+            font-family: Consolas, "Liberation Mono", Courier, monospace;
+            font-size: 12px;
+            color: #0366d6;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 1100px) {
+            .stats-bar {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
         @media (max-width: 992px) {
             .stats-bar {
                 grid-template-columns: repeat(2, 1fr);
@@ -370,14 +733,12 @@
             }
         }
 
-        /* Prevent table overflow on small screens */
         #results-body,
         #history-body {
             overflow-x: auto;
             width: 100%;
         }
     </style>
-
 </head>
 
 <body>
@@ -404,147 +765,423 @@
                 <div class="sidebar-title">Discovery Operations</div>
                 <button class="nav-link active" id="nav-discover" onclick="showSection('discover')">◈ Discover
                     Devices</button>
+                <button class="nav-link" id="nav-ranges" onclick="showSection('ranges')">⊞ Broadcast Ranges</button>
                 <button class="nav-link" id="nav-history" onclick="showSection('history')">◷ Session History</button>
 
-                <div class="sidebar-title" style="margin-top: 15px;">System Diagnostics</div>
-                <div style="font-size: 12px; color: #555555; padding: 2px 5px;">
-                    • Server: <span style="color: #28a745; font-weight: bold;">Online</span>
+                <div class="sidebar-title" style="margin-top:15px;">System Diagnostics</div>
+                <div style="font-size:12px;color:#555555;padding:2px 5px;">
+                    • Server: <span style="color:#28a745;font-weight:bold;">Online</span>
                 </div>
-                <div style="font-size: 12px; color: #555555; padding: 2px 5px;">
-                    • Server IP: <span style="font-weight: bold;">{{ server_ip }}</span>
+                <div style="font-size:12px;color:#555555;padding:2px 5px;">
+                    • Server IP: <span style="font-weight:bold;">{{ server_ip }}</span>
                 </div>
-                <div style="font-size: 11px; color: #777777; padding: 2px 5px; font-family: monospace;">
+                <div style="font-size:11px;color:#777777;padding:2px 5px;font-family:monospace;">
                     Ports: UDP 5000 / HTTP 5001
+                </div>
+                <div style="font-size:11px;color:#777777;padding:2px 5px;margin-top:4px;">
+                    • Custom ranges: <span id="sidebar-range-count" style="font-weight:bold;color:#333;">0</span>
                 </div>
             </aside>
 
-
             <!-- Main Content Area -->
             <main>
-                <!-- Stats Row -->
+                <!--
+                    ── Stats Row ──────────────────────────────────────────────
+                    Five cards, each clickable to filter the results table:
+                      1. Total Discovered   — all devices, no filter
+                      2. Managed            — type=managed (direct LAN agent)
+                      3. Managed Hotspotted — type=relayed (agent behind hotspot)
+                      4. Unmanaged Hotspot  — type=unmanaged with relay_host set
+                      5. Unmanaged          — type=unmanaged, no relay (direct LAN)
+                -->
                 <div class="stats-bar">
-                    <div class="stat-box">
+                    <div class="stat-box stat-all active-filter" id="statbox-all" onclick="setStatFilter('all')"
+                        title="Show all discovered devices">
                         <div class="stat-num" id="stat-total">—</div>
                         <div class="stat-lbl">Total Discovered</div>
+                        <div class="stat-hint">click to reset filter</div>
                     </div>
-                    <div class="stat-box">
+                    <div class="stat-box stat-managed" id="statbox-managed" onclick="setStatFilter('managed')"
+                        title="Devices with Mneti agent on main LAN">
                         <div class="stat-num" id="stat-managed">—</div>
-                        <div class="stat-lbl">Managed Clients</div>
+                        <div class="stat-lbl">Managed</div>
+                        <div class="stat-hint">direct LAN agents</div>
                     </div>
-                    <div class="stat-box">
-                        <div class="stat-num" id="stat-relayed">—</div>
-                        <div class="stat-lbl">Relayed behind Hotspot</div>
+                    <div class="stat-box stat-managed-hotspot" id="statbox-managed-hotspot"
+                        onclick="setStatFilter('managed-hotspot')" title="Managed agents relayed through a hotspot">
+                        <div class="stat-num" id="stat-managed-hotspot">—</div>
+                        <div class="stat-lbl">Managed Hotspotted</div>
+                        <div class="stat-hint">agent + hotspot relay</div>
                     </div>
-                    <div class="stat-box">
+                    <div class="stat-box stat-unmanaged-hotspot" id="statbox-unmanaged-hotspot"
+                        onclick="setStatFilter('unmanaged-hotspot')" title="No-agent devices relayed through a hotspot">
+                        <div class="stat-num" id="stat-unmanaged-hotspot">—</div>
+                        <div class="stat-lbl">Unmanaged Hotspot</div>
+                        <div class="stat-hint">no agent, via hotspot</div>
+                    </div>
+                    <div class="stat-box stat-unmanaged" id="statbox-unmanaged" onclick="setStatFilter('unmanaged')"
+                        title="Devices with no agent on main LAN">
                         <div class="stat-num" id="stat-unmanaged">—</div>
-                        <div class="stat-lbl">Unmanaged Hotspot Clients</div>
+                        <div class="stat-lbl">Unmanaged</div>
+                        <div class="stat-hint">direct LAN, no agent</div>
                     </div>
                 </div>
 
-                <!-- Panels Grid -->
-                <div class="panel-row" id="inputs-row">
-                    <!-- Targeted Discovery -->
-                    <div class="panel">
-                        <div class="panel-title">⊙ Targeted Discovery Search</div>
-                        <div class="form-group">
-                            <select id="target-mode">
-                                <option value="mac">MAC</option>
-                                <option value="ip">IP</option>
-                            </select>
-                            <input type="text" id="target-input" placeholder="e.g. AA:BB:CC:DD:EE:FF or 10.0.0.15"
-                                onkeydown="if(event.key==='Enter') triggerTargeted()">
-                            <button class="btn btn-primary" onclick="triggerTargeted()" id="btn-targeted">Search
-                                Target</button>
+                <!-- ── Discover Section ── -->
+                <div id="discover-section">
+                    <div class="panel-row" id="inputs-row">
+                        <!-- Targeted Discovery -->
+                        <div class="panel">
+                            <div class="panel-title">⊙ Targeted Discovery Search</div>
+                            <div class="form-group" style="align-items:center;">
+                                <select id="target-mode" onchange="onModeChange()">
+                                    <option value="mac">MAC</option>
+                                    <option value="ip">IP</option>
+                                </select>
+
+                                <!-- MAC input (single field) -->
+                                <div id="mac-input-wrap" style="position:relative;flex:1;">
+                                    <input type="text" id="target-input-mac" placeholder="AA:BB:CC:DD:EE:FF"
+                                        maxlength="17" autocomplete="off" autocorrect="off" autocapitalize="off"
+                                        spellcheck="false"
+                                        style="font-family:Consolas,'Liberation Mono',Courier,monospace;letter-spacing:0.05em;width:100%;">
+                                    <span id="mac-valid-icon"
+                                        style="position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:13px;display:none;"></span>
+                                </div>
+
+                                <!-- IP input (4 segmented boxes + fixed dots) -->
+                                <div id="ip-input-wrap" style="display:none;flex:1;align-items:center;gap:0;">
+                                    <div style="display:flex;align-items:center;
+                                        border:1px solid #ced4da;border-radius:3px;
+                                        background:#fff;padding:0 6px;width:100%;
+                                        font-family:Consolas,'Liberation Mono',Courier,monospace;
+                                        font-size:13px;height:32px;">
+                                        <input type="text" id="ip-o1" maxlength="3" inputmode="numeric"
+                                            style="width:32px;border:none;outline:none;text-align:center;font-family:inherit;font-size:inherit;background:transparent;padding:0;">
+                                        <span class="ip-dot">.</span>
+                                        <input type="text" id="ip-o2" maxlength="3" inputmode="numeric"
+                                            style="width:32px;border:none;outline:none;text-align:center;font-family:inherit;font-size:inherit;background:transparent;padding:0;">
+                                        <span class="ip-dot">.</span>
+                                        <input type="text" id="ip-o3" maxlength="3" inputmode="numeric"
+                                            style="width:32px;border:none;outline:none;text-align:center;font-family:inherit;font-size:inherit;background:transparent;padding:0;">
+                                        <span class="ip-dot">.</span>
+                                        <input type="text" id="ip-o4" maxlength="3" inputmode="numeric"
+                                            style="width:32px;border:none;outline:none;text-align:center;font-family:inherit;font-size:inherit;background:transparent;padding:0;">
+                                        <span id="ip-valid-icon"
+                                            style="margin-left:auto;font-size:13px;display:none;"></span>
+                                    </div>
+                                </div>
+
+                                <button class="btn btn-primary" onclick="triggerTargeted()"
+                                    id="btn-targeted">Search</button>
+                            </div>
+                            <div id="target-hint"
+                                style="font-size:11px;color:#6c757d;margin-top:4px;font-family:monospace;">
+                                Format: <span id="target-format-example">AA:BB:CC:DD:EE:FF</span>
+                            </div>
+                            <p class="help-text" style="margin-top:6px;">
+                                Sends a UDP broadcast. Only the device matching this MAC or IP will respond — others are
+                                suppressed server-side.
+                            </p>
                         </div>
-                        <p style="font-size: 11px; color: #6c757d; margin-top: 5px;">
-                            Sends UDP broadcast request. Any managed client matching this MAC or IP will report back
-                            within 5s.
-                        </p>
+
+                        <!-- Full Discovery -->
+                        <div class="panel">
+                            <div class="panel-title">⊕ Full Network Discovery Scan</div>
+                            <p style="font-size:13px;color:#555555;margin-bottom:12px;">
+                                Broadcast discovery packet to all clients on the internal subnet — including any custom
+                                ranges configured below. All listening devices will report their location.
+                            </p>
+                            <button class="btn btn-primary" onclick="triggerFullDiscovery()" id="btn-full"
+                                style="width:100%;">
+                                Trigger Full Subnet Discovery
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- Full Discovery -->
-                    <div class="panel">
-                        <div class="panel-title">⊕ Full Network Discovery Scan</div>
-                        <p style="font-size: 13px; color: #555555; margin-bottom: 12px;">
-                            Broadcast discovery packet to all clients on the internal subnet. All listening devices will
-                            report location.
-                        </p>
-                        <button class="btn btn-primary" onclick="triggerFullDiscovery()" id="btn-full"
-                            style="width: 100%;">
-                            Trigger Full Subnet Discovery
-                        </button>
+                    <!-- Results Table Box -->
+                    <div class="content-box" id="results-section">
+                        <div class="box-header">
+                            <div>
+                                <span id="results-label">Discovery Results</span>
+                                <span id="results-status"
+                                    style="font-size:12px;color:#6c757d;font-weight:normal;margin-left:10px;"></span>
+                            </div>
+                            <div id="search-container" style="display:none;">
+                                <input type="text" id="search-filter" placeholder="🔍 Search IP, MAC, room, etc..."
+                                    style="padding:5px 10px;font-size:13px;border:1px solid #cccccc;border-radius:4px;width:220px;"
+                                    oninput="displayFilteredResults()">
+                            </div>
+                        </div>
+
+                        <!-- Type filter chips — shown once devices arrive -->
+                        <div class="filter-bar" id="filter-bar" style="display:none;">
+                            <span style="font-size:11px;color:#6c757d;font-weight:bold;margin-right:2px;">Filter:</span>
+                            <span class="filter-chip chip-all active" id="chip-all" onclick="setChipFilter('all')">
+                                All <span class="chip-count" id="chip-count-all">0</span>
+                            </span>
+                            <span class="filter-chip chip-managed" id="chip-managed" onclick="setChipFilter('managed')">
+                                ● Managed <span class="chip-count" id="chip-count-managed">0</span>
+                            </span>
+                            <span class="filter-chip chip-managed-hotspot" id="chip-managed-hotspot"
+                                onclick="setChipFilter('managed-hotspot')">
+                                ↗ Managed Hotspotted <span class="chip-count" id="chip-count-managed-hotspot">0</span>
+                            </span>
+                            <span class="filter-chip chip-unmanaged-hotspot" id="chip-unmanaged-hotspot"
+                                onclick="setChipFilter('unmanaged-hotspot')">
+                                ○ Unmanaged Hotspot <span class="chip-count" id="chip-count-unmanaged-hotspot">0</span>
+                            </span>
+                            <span class="filter-chip chip-unmanaged" id="chip-unmanaged"
+                                onclick="setChipFilter('unmanaged')">
+                                ✕ Unmanaged <span class="chip-count" id="chip-count-unmanaged">0</span>
+                            </span>
+                        </div>
+
+                        <div id="results-body">
+                            <div class="empty-state">Initiate a targeted search or full scan above to locate devices on
+                                the network.</div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Results Table Box -->
-                <div class="content-box" id="results-section">
-                    <div class="box-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                        <div>
-                            <span id="results-label">Discovery Results</span>
-                            <span id="results-status" style="font-size: 12px; color: #6c757d; font-weight: normal; margin-left: 10px;"></span>
+                <!-- ── Broadcast Ranges Section ── -->
+                <div id="ranges-section" style="display:none;">
+                    <div class="panel-row">
+                        <!-- Add Range -->
+                        <div class="panel">
+                            <div class="panel-title">⊞ Add Broadcast Range</div>
+                            <div class="form-group">
+                                <input type="text" id="range-input" placeholder="e.g. 10.51.144.1-254"
+                                    style="font-family:monospace;font-size:12px;"
+                                    onkeydown="if(event.key==='Enter') addRange()">
+                                <button class="btn btn-primary" onclick="addRange()">Add</button>
+                            </div>
+                            <div id="range-preview" class="range-resolved"></div>
+
+                            <div class="range-subnet-hint">
+                                <strong>Accepted formats</strong>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Format</th>
+                                            <th>Example</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>Last-octet dash range</td>
+                                            <td><span class="format-pill">10.51.144.1-254</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Full dash range</td>
+                                            <td><span class="format-pill">10.51.144.1-10.51.147.254</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>CIDR notation</td>
+                                            <td><span class="format-pill">10.51.144.0/22</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Dotted-decimal mask</td>
+                                            <td><span class="format-pill">10.51.144.0/255.255.252.0</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="range-subnet-hint" style="margin-top:8px;">
+                                <strong>Common subnet masks &amp; host counts</strong>
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Mask</th>
+                                            <th>CIDR</th>
+                                            <th>Host addresses</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>255.255.255.0</td>
+                                            <td>/24</td>
+                                            <td>254</td>
+                                        </tr>
+                                        <tr>
+                                            <td>255.255.254.0</td>
+                                            <td>/23</td>
+                                            <td>510</td>
+                                        </tr>
+                                        <tr>
+                                            <td>255.255.252.0</td>
+                                            <td>/22</td>
+                                            <td>1,022</td>
+                                        </tr>
+                                        <tr>
+                                            <td>255.255.248.0</td>
+                                            <td>/21</td>
+                                            <td>2,046</td>
+                                        </tr>
+                                        <tr>
+                                            <td>255.255.240.0</td>
+                                            <td>/20</td>
+                                            <td>4,094</td>
+                                        </tr>
+                                        <tr>
+                                            <td>255.255.0.0</td>
+                                            <td>/16</td>
+                                            <td>65,534</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
-                        <div id="search-container" style="display: none;">
-                            <input type="text" id="search-filter" placeholder="🔍 Search IP, MAC, room, etc..." 
-                                   style="padding: 5px 10px; font-size: 13px; border: 1px solid #cccccc; border-radius: 4px; width: 220px;"
-                                   oninput="filterResults()">
-                        </div>
-                    </div>
-                    <div id="results-body">
-                        <div class="empty-state">
-                            Initiate a targeted search or full scan above to locate devices on the network.
+
+                        <!-- Active Ranges -->
+                        <div class="panel">
+                            <div class="panel-title"
+                                style="display:flex;justify-content:space-between;align-items:center;">
+                                <span>Active Broadcast Ranges</span>
+                                <div style="display:flex;gap:6px;">
+                                    <button class="btn btn-sm" onclick="loadRanges()">Refresh</button>
+                                    <button class="btn btn-sm btn-danger" onclick="clearAllRanges()"
+                                        id="btn-clear-ranges" disabled>Clear All</button>
+                                </div>
+                            </div>
+                            <div class="range-list-wrap" id="range-list">
+                                <div class="empty-state" style="padding:20px;">No custom ranges configured.</div>
+                            </div>
+                            <div id="ranges-save-bar" style="display:none;padding:10px 0 0 0;">
+                                <button class="btn btn-primary" style="width:100%;" onclick="saveRanges()"
+                                    id="btn-save-ranges">
+                                    Save &amp; Apply Ranges
+                                </button>
+                                <p class="help-text" style="text-align:center;margin-top:5px;">
+                                    Changes take effect immediately for the next discovery scan.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- History Table Box (Hidden by default) -->
-                <div class="content-box" id="history-section" style="display: none;">
-                    <div class="box-header">
-                        <span>Past Discovery Sessions</span>
-                        <button class="btn btn-sm" onclick="loadHistory()">Refresh</button>
+                <!-- ── History Section ── -->
+                <div id="history-section" style="display:none;">
+                    <div id="history-index-section">
+                        <div class="content-box">
+                            <div class="box-header">
+                                <span>Past Discovery Sessions</span>
+                                <button class="btn btn-sm" onclick="loadHistory()">Refresh</button>
+                            </div>
+                            <div id="history-body">
+                                <div class="empty-state">No history records found.</div>
+                            </div>
+                        </div>
                     </div>
-                    <div id="history-body">
-                        <div class="empty-state">
-                            No history records found.
+
+                    <div id="history-detail-section">
+                        <div class="history-session-header">
+                            <div>
+                                <div style="font-weight:bold;font-size:15px;" id="history-detail-title">Session Detail
+                                </div>
+                                <div class="history-session-meta" id="history-detail-meta"></div>
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <input type="text" id="history-search-filter" placeholder="🔍 Search IP, MAC, room…"
+                                    style="padding:5px 10px;font-size:13px;border:1px solid #ccc;border-radius:4px;width:200px;"
+                                    oninput="filterHistoryDetail()">
+                                <button class="btn btn-sm btn-primary" onclick="exportHistoryCSV()"
+                                    id="btn-history-export">Export CSV</button>
+                                <button class="btn btn-sm" onclick="backToHistoryIndex()">← Back to Sessions</button>
+                            </div>
+                        </div>
+
+                        <div class="content-box">
+                            <div class="box-header">
+                                <span id="history-detail-count"></span>
+                            </div>
+
+                            <!-- Filter chips for history detail -->
+                            <div class="filter-bar" id="history-filter-bar" style="display:none;">
+                                <span
+                                    style="font-size:11px;color:#6c757d;font-weight:bold;margin-right:2px;">Filter:</span>
+                                <span class="filter-chip chip-all active" id="hchip-all"
+                                    onclick="setHistoryChipFilter('all')">
+                                    All <span class="chip-count" id="hchip-count-all">0</span>
+                                </span>
+                                <span class="filter-chip chip-managed" id="hchip-managed"
+                                    onclick="setHistoryChipFilter('managed')">
+                                    ● Managed <span class="chip-count" id="hchip-count-managed">0</span>
+                                </span>
+                                <span class="filter-chip chip-managed-hotspot" id="hchip-managed-hotspot"
+                                    onclick="setHistoryChipFilter('managed-hotspot')">
+                                    ↗ Managed Hotspotted <span class="chip-count"
+                                        id="hchip-count-managed-hotspot">0</span>
+                                </span>
+                                <span class="filter-chip chip-unmanaged-hotspot" id="hchip-unmanaged-hotspot"
+                                    onclick="setHistoryChipFilter('unmanaged-hotspot')">
+                                    ○ Unmanaged Hotspot <span class="chip-count"
+                                        id="hchip-count-unmanaged-hotspot">0</span>
+                                </span>
+                                <span class="filter-chip chip-unmanaged" id="hchip-unmanaged"
+                                    onclick="setHistoryChipFilter('unmanaged')">
+                                    ✕ Unmanaged <span class="chip-count" id="hchip-count-unmanaged">0</span>
+                                </span>
+                            </div>
+
+                            <div id="history-detail-body">
+                                <div class="empty-state">No devices found in this session.</div>
+                            </div>
                         </div>
                     </div>
                 </div>
+
             </main>
         </div>
     </div>
 
-    <!-- ── JavaScript Controllers ── -->
     <script>
-        // Replace the entire <script> block in dashboard.html with this content.
-        //
-        // Key changes vs original:
-        //   1. No fixed poll timeout. Instead, polls until the server reports that
-        //      no new results have arrived for IDLE_STOP_SECONDS (60s). This handles
-        //      the dual-subnet case where the second ARP sweep starts ~4 min after
-        //      the first broadcast.
-        //   2. Live status line shows device count + idle countdown.
-        //   3. Relay attribution column only shows content when type === 'relayed'
-        //      (unmanaged ARP-discovered devices no longer show "via X").
-
+        // ── State ─────────────────────────────────────────────────────────────
         let currentRequestId = null;
         let pollTimer = null;
         let countdownTimer = null;
         let pollStart = null;
         let currentDevices = [];
+        let activeStatFilter = 'all';   // stat-card / chip filter for discover view
+        let activeHistoryChip = 'all';   // chip filter for history detail view
 
-        // Stop polling when no new report has arrived for this long.
+        let currentHistorySession = null;
+        let currentHistoryDevices = [];
+
+        let pendingRanges = [];
+        let savedRanges = [];
+
         const IDLE_STOP_SECONDS = 600;
-        // Hard ceiling — stop regardless after 20 min (safety valve).
         const MAX_POLL_SECONDS = 1200;
 
-        function showSection(name) {
-            document.getElementById('results-section').style.display = name === 'discover' ? '' : 'none';
-            document.getElementById('inputs-row').style.display = name === 'discover' ? '' : 'none';
-            document.getElementById('history-section').style.display = name === 'history' ? '' : 'none';
-            document.getElementById('nav-discover').classList.toggle('active', name === 'discover');
-            document.getElementById('nav-history').classList.toggle('active', name === 'history');
-            if (name === 'history') loadHistory();
+        // ── Device categorisation helper ──────────────────────────────────────
+        // Returns one of: 'managed' | 'managed-hotspot' | 'unmanaged-hotspot' | 'unmanaged'
+        function deviceCategory(d) {
+            const type = (d.type || '').toLowerCase();
+            const hasRelay = !!(d.relay_host && d.relay_host.trim());
+            if (type === 'managed') return 'managed';
+            if (type === 'relayed') return 'managed-hotspot';
+            if (type === 'unmanaged') return hasRelay ? 'unmanaged-hotspot' : 'unmanaged';
+            return 'unmanaged';
         }
 
+        // ── Section routing ───────────────────────────────────────────────────
+        function showSection(name) {
+            document.getElementById('discover-section').style.display = name === 'discover' ? '' : 'none';
+            document.getElementById('ranges-section').style.display = name === 'ranges' ? '' : 'none';
+            document.getElementById('history-section').style.display = name === 'history' ? '' : 'none';
+
+            ['discover', 'ranges', 'history'].forEach(s => {
+                const el = document.getElementById(`nav-${s}`);
+                if (el) el.classList.toggle('active', s === name);
+            });
+
+            if (name === 'history') { backToHistoryIndex(); loadHistory(); }
+            if (name === 'ranges') loadRanges();
+        }
+
+        // ── Toast ─────────────────────────────────────────────────────────────
         function toast(msg) {
             const el = document.getElementById('toast');
             el.textContent = msg;
@@ -553,12 +1190,12 @@
             el._timer = setTimeout(() => el.className = '', 3500);
         }
 
-        // Called every second while scanning.
+        // ── Progress bar & button state ───────────────────────────────────────
         function updateStatus(secsSinceActivity) {
             const totalElapsed = Math.floor((Date.now() - pollStart) / 1000);
             const idleFor = Math.round(secsSinceActivity);
             const idleRemain = Math.max(0, IDLE_STOP_SECONDS - idleFor);
-            const found = document.querySelectorAll('#results-body tbody tr').length;
+            const found = currentDevices.length;
             const el = document.getElementById('results-status');
             if (!el) return;
             if (idleFor < 5) {
@@ -576,8 +1213,6 @@
                 document.getElementById('btn-full').disabled = true;
                 if (countdownTimer) clearInterval(countdownTimer);
                 countdownTimer = setInterval(() => {
-                    // Will be updated properly on the next fetchResults cycle;
-                    // this just keeps the clock ticking between poll intervals.
                     const elapsed = Math.floor((Date.now() - pollStart) / 1000);
                     const el = document.getElementById('results-status');
                     if (el && el.textContent.includes('elapsed')) {
@@ -594,8 +1229,9 @@
             }
         }
 
+        // ── Discovery triggers ────────────────────────────────────────────────
         async function triggerTargeted() {
-            const target = document.getElementById('target-input').value.trim();
+            const target = getTargetValue().trim();
             const mode = document.getElementById('target-mode').value;
             if (!target) { toast('Please enter a target MAC or IP address'); return; }
             clearResults();
@@ -620,7 +1256,8 @@
         async function triggerFullDiscovery() {
             clearResults();
             setLoading(true);
-            document.getElementById('results-label').textContent = 'Full network scan';
+            const rangeNote = savedRanges.length ? ` + ${savedRanges.length} custom range(s)` : '';
+            document.getElementById('results-label').textContent = `Full network scan${rangeNote}`;
             try {
                 const res = await fetch('/api/discover/all', { method: 'POST' });
                 const data = await res.json();
@@ -652,13 +1289,14 @@
                 const elapsed = (Date.now() - pollStart) / 1000;
                 updateStatus(secs);
 
-                // Stop when idle for long enough OR hard ceiling hit.
                 const shouldStop = (secs >= IDLE_STOP_SECONDS) || (elapsed >= MAX_POLL_SECONDS);
                 if (shouldStop) {
                     clearInterval(pollTimer);
                     setLoading(false);
                     const count = (data.devices || []).length;
-                    const reason = elapsed >= MAX_POLL_SECONDS ? '20-min limit reached' : `no new devices for ${IDLE_STOP_SECONDS}s`;
+                    const reason = elapsed >= MAX_POLL_SECONDS
+                        ? '20-min limit reached'
+                        : `no new devices for ${IDLE_STOP_SECONDS}s`;
                     toast(`Scan complete (${reason}) — ${count} device(s) found`);
                     document.getElementById('results-status').textContent =
                         `Completed · ${count} device(s) found`;
@@ -666,28 +1304,130 @@
             } catch (_) { }
         }
 
-        function renderResults(devices) {
-            currentDevices = devices;
-            
-            const managed = devices.filter(d => d.type === 'managed').length;
-            const relayed = devices.filter(d => d.type === 'relayed').length;
-            const unmanaged = devices.filter(d => d.type === 'unmanaged').length;
+        // ── Stat card + chip filter (discover view) ───────────────────────────
+        function setStatFilter(cat) {
+            activeStatFilter = cat;
+            // Sync stat card highlight
+            ['all', 'managed', 'managed-hotspot', 'unmanaged-hotspot', 'unmanaged'].forEach(c => {
+                const box = document.getElementById('statbox-' + c);
+                if (box) box.classList.toggle('active-filter', c === cat);
+            });
+            // Sync chips
+            setChipFilter(cat, /* skipStatSync */ true);
+        }
 
-            document.getElementById('stat-total').textContent = devices.length;
-            document.getElementById('stat-managed').textContent = managed;
-            document.getElementById('stat-relayed').textContent = relayed;
-            document.getElementById('stat-unmanaged').textContent = unmanaged;
-            document.getElementById('export-btn').disabled = devices.length === 0;
-
-            const searchContainer = document.getElementById('search-container');
-            if (searchContainer) {
-                searchContainer.style.display = devices.length > 0 ? 'block' : 'none';
+        function setChipFilter(cat, skipStatSync) {
+            activeStatFilter = cat;
+            // Update chip active state
+            ['all', 'managed', 'managed-hotspot', 'unmanaged-hotspot', 'unmanaged'].forEach(c => {
+                const chip = document.getElementById('chip-' + c);
+                if (chip) chip.classList.toggle('active', c === cat);
+            });
+            // Sync stat cards
+            if (!skipStatSync) {
+                ['all', 'managed', 'managed-hotspot', 'unmanaged-hotspot', 'unmanaged'].forEach(c => {
+                    const box = document.getElementById('statbox-' + c);
+                    if (box) box.classList.toggle('active-filter', c === cat);
+                });
             }
-
             displayFilteredResults();
         }
 
-        function filterResults() {
+        // ── Results rendering ─────────────────────────────────────────────────
+        function buildDeviceTableHTML(devices) {
+            if (!devices || devices.length === 0) return '';
+            const rows = devices.map(d => {
+                const cat = deviceCategory(d);
+
+                let badge = '';
+                let relayLine = '';
+
+                if (cat === 'managed') {
+                    badge = '<span class="badge badge-managed">● MANAGED</span>';
+                } else if (cat === 'managed-hotspot') {
+                    badge = '<span class="badge badge-managed-hotspot">↗ MANAGED HOTSPOTTED</span>';
+                    if (d.relay_host) {
+                        relayLine = `<div class="relay-info">via: ${escHtml(d.relay_host)} · ${escHtml(d.relay_building || '')} / ${escHtml(d.relay_room || '')}</div>`;
+                    }
+                } else if (cat === 'unmanaged-hotspot') {
+                    badge = '<span class="badge badge-unmanaged-hotspot">○ UNMANAGED HOTSPOT</span>';
+                    if (d.relay_host) {
+                        relayLine = `<div class="relay-info">via: ${escHtml(d.relay_host)} · ${escHtml(d.relay_building || '')} / ${escHtml(d.relay_room || '')}</div>`;
+                    }
+                } else {
+                    badge = '<span class="badge badge-unmanaged">✕ UNMANAGED</span>';
+                }
+
+                // Location: for unmanaged-hotspot, building/room is inherited from relay host
+                const location = d.building
+                    ? `${escHtml(d.building)} · ${escHtml(d.room)}`
+                    : '<span style="color:#999">—</span>';
+
+                let ts = '—';
+                if (d.timestamp) {
+                    try {
+                        const dt = new Date(d.timestamp);
+                        const pad = n => String(n).padStart(2, '0');
+                        ts = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+                    } catch (_) {
+                        ts = d.timestamp.replace('T', ' ').substring(0, 19);
+                    }
+                }
+
+                return `<tr>
+                    <td>${badge}${relayLine}</td>
+                    <td><strong>${escHtml(d.hostname || '—')}</strong><br>
+                        <span class="mono" style="font-size:11px;color:#666">${escHtml(d.ip)}</span></td>
+                    <td class="mono">${escHtml(d.mac || '—')}</td>
+                    <td>${location}</td>
+                    <td class="mono">${escHtml(d.username || '—')}</td>
+                    <td>${escHtml(d.vendor || '—')}</td>
+                    <td class="mono" style="font-size:11px;color:#666">${ts}</td>
+                </tr>`;
+            }).join('');
+
+            return `<table>
+                <thead><tr>
+                    <th>Type</th>
+                    <th>Hostname / IP</th>
+                    <th>MAC address</th>
+                    <th>Location</th>
+                    <th>Active user</th>
+                    <th>Vendor</th>
+                    <th>Timestamp</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+        }
+
+        function renderResults(devices) {
+            currentDevices = devices;
+
+            // Compute per-category counts
+            const counts = { 'managed': 0, 'managed-hotspot': 0, 'unmanaged-hotspot': 0, 'unmanaged': 0 };
+            devices.forEach(d => counts[deviceCategory(d)]++);
+            const total = devices.length;
+
+            // Update stat cards
+            document.getElementById('stat-total').textContent = total;
+            document.getElementById('stat-managed').textContent = counts['managed'];
+            document.getElementById('stat-managed-hotspot').textContent = counts['managed-hotspot'];
+            document.getElementById('stat-unmanaged-hotspot').textContent = counts['unmanaged-hotspot'];
+            document.getElementById('stat-unmanaged').textContent = counts['unmanaged'];
+            document.getElementById('export-btn').disabled = total === 0;
+
+            // Update chip counts
+            document.getElementById('chip-count-all').textContent = total;
+            document.getElementById('chip-count-managed').textContent = counts['managed'];
+            document.getElementById('chip-count-managed-hotspot').textContent = counts['managed-hotspot'];
+            document.getElementById('chip-count-unmanaged-hotspot').textContent = counts['unmanaged-hotspot'];
+            document.getElementById('chip-count-unmanaged').textContent = counts['unmanaged'];
+
+            const sc = document.getElementById('search-container');
+            const fb = document.getElementById('filter-bar');
+            sc && (sc.style.display = total > 0 ? 'block' : 'none');
+            fb && (fb.style.display = total > 0 ? 'flex' : 'none');
+
             displayFilteredResults();
         }
 
@@ -699,16 +1439,15 @@
             }
 
             const query = (document.getElementById('search-filter')?.value || '').trim().toLowerCase();
-            
+            const filter = activeStatFilter;
+
             const filtered = currentDevices.filter(d => {
+                // Type filter
+                if (filter !== 'all' && deviceCategory(d) !== filter) return false;
+                // Text search
                 if (!query) return true;
-                return (d.hostname || '').toLowerCase().includes(query) ||
-                       (d.ip || '').toLowerCase().includes(query) ||
-                       (d.mac || '').toLowerCase().includes(query) ||
-                       (d.building || '').toLowerCase().includes(query) ||
-                       (d.room || '').toLowerCase().includes(query) ||
-                       (d.username || '').toLowerCase().includes(query) ||
-                       (d.vendor || '').toLowerCase().includes(query);
+                return ['hostname', 'ip', 'mac', 'building', 'room', 'username', 'vendor', 'relay_host', 'relay_building', 'relay_room']
+                    .some(k => (d[k] || '').toLowerCase().includes(query));
             });
 
             if (filtered.length === 0) {
@@ -717,61 +1456,132 @@
                 return;
             }
 
-            const rows = filtered.map(d => {
-                let badge = '<span class="badge">● CLIENT</span>';
-                if (d.type === 'managed') badge = '<span class="badge badge-managed">● MANAGED</span>';
-                else if (d.type === 'relayed') badge = '<span class="badge badge-relayed">↗ RELAYED</span>';
-                else if (d.type === 'unmanaged') badge = '<span class="badge badge-unmanaged">○ UNMANAGED</span>';
-
-                const relayLine = (d.type === 'relayed' && d.relay_host)
-                    ? `<div class="relay-info">via: ${escHtml(d.relay_host)} (${escHtml(d.relay_building)} / ${escHtml(d.relay_room)})</div>`
-                    : '';
-
-                const location = d.building
-                    ? `${escHtml(d.building)} · ${escHtml(d.room)}`
-                    : '<span style="color:#999">—</span>';
-
-                // Convert ISO UTC string to browser local time
-                let ts = '—';
-                if (d.timestamp) {
-                    try {
-                        const dt = new Date(d.timestamp);
-                        const pad = (n) => String(n).padStart(2, '0');
-                        const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
-                        const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
-                        ts = `${dateStr} ${timeStr}`;
-                    } catch (_) {
-                        ts = d.timestamp.replace('T', ' ').substring(0, 19);
-                    }
-                }
-
-                return `<tr>
-            <td>${badge}${relayLine}</td>
-            <td><strong>${escHtml(d.hostname || '—')}</strong><br>
-                <span class="mono" style="font-size:11px;color:#666">${escHtml(d.ip)}</span></td>
-            <td class="mono">${escHtml(d.mac || '—')}</td>
-            <td>${location}</td>
-            <td class="mono">${escHtml(d.username || '—')}</td>
-            <td>${escHtml(d.vendor || '—')}</td>
-            <td class="mono" style="font-size:11px;color:#666">${ts}</td>
-        </tr>`;
-            }).join('');
-
-            document.getElementById('results-body').innerHTML = `
-    <table>
-        <thead><tr>
-            <th>Type</th>
-            <th>Hostname / IP</th>
-            <th>MAC address</th>
-            <th>Location</th>
-            <th>Active user</th>
-            <th>Vendor</th>
-            <th>Timestamp</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-    </table>`;
+            document.getElementById('results-body').innerHTML = buildDeviceTableHTML(filtered);
         }
 
+        // ── Broadcast Ranges ──────────────────────────────────────────────────
+        async function loadRanges() {
+            try {
+                const res = await fetch('/api/ranges');
+                const data = await res.json();
+                savedRanges = data.ranges || [];
+                pendingRanges = savedRanges.map(r => r.label);
+                renderRangeList();
+                updateSidebarRangeCount();
+            } catch (e) {
+                toast('Failed to load ranges: ' + e.message);
+            }
+        }
+
+        function updateSidebarRangeCount() {
+            const el = document.getElementById('sidebar-range-count');
+            if (el) el.textContent = savedRanges.length;
+        }
+
+        function renderRangeList() {
+            const container = document.getElementById('range-list');
+            const saveBar = document.getElementById('ranges-save-bar');
+            const clearBtn = document.getElementById('btn-clear-ranges');
+
+            if (pendingRanges.length === 0) {
+                container.innerHTML = '<div class="empty-state" style="padding:20px;">No custom ranges configured. Broadcasts will use local network interfaces only.</div>';
+                if (saveBar) saveBar.style.display = 'none';
+                if (clearBtn) clearBtn.disabled = true;
+                return;
+            }
+
+            const savedMap = {};
+            savedRanges.forEach(r => { savedMap[r.label] = r; });
+
+            const items = pendingRanges.map((label, idx) => {
+                const saved = savedMap[label];
+                const detail = saved
+                    ? `${saved.network} · broadcast ${saved.broadcast} · ${saved.host_count.toLocaleString()} hosts · /${saved.prefix_len} (${saved.netmask})`
+                    : '<em style="color:#aaa">Not yet saved — click Save to apply</em>';
+                return `<div class="range-item">
+                    <div>
+                        <div class="range-item-label">${escHtml(label)}</div>
+                        <div class="range-item-detail">${detail}</div>
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="removeRange(${idx})" title="Remove">✕</button>
+                </div>`;
+            }).join('');
+
+            container.innerHTML = items;
+            if (saveBar) saveBar.style.display = 'block';
+            if (clearBtn) clearBtn.disabled = false;
+        }
+
+        function addRange() {
+            const input = document.getElementById('range-input');
+            const raw = (input.value || '').trim();
+            if (!raw) { toast('Enter a range first'); return; }
+            if (pendingRanges.includes(raw)) { toast('Range already in list'); return; }
+            pendingRanges.push(raw);
+            input.value = '';
+            document.getElementById('range-preview').textContent = '';
+            document.getElementById('range-preview').className = 'range-resolved';
+            renderRangeList();
+            const saveBar = document.getElementById('ranges-save-bar');
+            if (saveBar) saveBar.style.display = 'block';
+        }
+
+        function removeRange(idx) { pendingRanges.splice(idx, 1); renderRangeList(); }
+
+        async function clearAllRanges() { pendingRanges = []; await saveRanges(); }
+
+        async function saveRanges() {
+            const btn = document.getElementById('btn-save-ranges');
+            if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+            try {
+                const res = await fetch('/api/ranges', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ranges: pendingRanges }),
+                });
+                const data = await res.json();
+                if (!res.ok) { toast(data.error || 'Failed to save ranges'); return; }
+                savedRanges = data.ranges || [];
+                pendingRanges = savedRanges.map(r => r.label);
+
+                const rejected = data.rejected || 0;
+                if (rejected > 0) {
+                    toast(`Saved ${data.accepted} range(s). ${rejected} invalid entr${rejected === 1 ? 'y' : 'ies'} removed.`);
+                } else if (data.accepted === 0) {
+                    toast('All ranges cleared.');
+                } else {
+                    toast(`${data.accepted} range(s) saved and active.`);
+                }
+                renderRangeList();
+                updateSidebarRangeCount();
+            } catch (e) {
+                toast('Save failed: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Save & Apply Ranges'; }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('range-input');
+            const preview = document.getElementById('range-preview');
+            if (!input || !preview) return;
+
+            input.addEventListener('input', () => {
+                const raw = input.value.trim();
+                if (!raw) { preview.textContent = ''; preview.className = 'range-resolved'; return; }
+                const looksLike = /^\d{1,3}(\.\d{1,3}){3}[\-\/]/.test(raw) ||
+                    /^\d{1,3}(\.\d{1,3}){3}-\d{1,3}$/.test(raw);
+                preview.className = 'range-resolved ' + (looksLike ? 'valid' : 'error');
+                preview.textContent = looksLike
+                    ? '✓ Looks valid — click Add or press Enter'
+                    : '✗ Unrecognised format — see accepted formats below';
+            });
+
+            input.addEventListener('keydown', e => { if (e.key === 'Enter') addRange(); });
+            loadRanges();
+        });
+
+        // ── History ───────────────────────────────────────────────────────────
         async function loadHistory() {
             try {
                 const res = await fetch('/api/history');
@@ -781,21 +1591,147 @@
                         '<div class="empty-state">No sessions found.</div>';
                     return;
                 }
-                const rows = data.map(s => `<tr>
-            <td class="mono">${s.request_id.substring(0, 8)}…</td>
-            <td><span class="badge">${s.type.toUpperCase()}</span></td>
-            <td>${s.device_count} device(s)</td>
-            <td class="mono" style="font-size:11px;color:#666">${(s.started_at || '').replace('T', ' ').substring(0, 19)}</td>
-        </tr>`).join('');
-                document.getElementById('history-body').innerHTML = `<table>
-            <thead><tr>
-                <th>Session ID</th><th>Type</th><th>Devices</th><th>Started</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-        </table>`;
-            } catch (_) { }
+
+                const sorted = [...data].sort((a, b) =>
+                    (b.started_at || '').localeCompare(a.started_at || '')
+                );
+
+                const rows = sorted.map(s => {
+                    const shortId = (s.request_id || '').substring(0, 8);
+                    const ts = (s.started_at || '').replace('T', ' ').substring(0, 19);
+                    const typeBadge = s.type === 'targeted'
+                        ? '<span class="badge badge-managed">TARGETED</span>'
+                        : '<span class="badge badge-managed-hotspot">FULL SCAN</span>';
+                    return `<tr class="history-row-clickable" onclick="openHistorySession('${escHtml(s.request_id)}','${escHtml(ts)}','${escHtml(s.type)}',${s.device_count})">
+                        <td><span class="session-id-link">${shortId}…</span></td>
+                        <td>${typeBadge}</td>
+                        <td>${s.device_count} device(s)</td>
+                        <td class="mono" style="font-size:11px;color:#666">${ts}</td>
+                        <td><span style="font-size:11px;color:#0366d6;">View →</span></td>
+                    </tr>`;
+                }).join('');
+
+                document.getElementById('history-body').innerHTML = `
+                    <table>
+                        <thead><tr>
+                            <th>Session ID</th><th>Type</th><th>Devices</th><th>Started</th><th></th>
+                        </tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>`;
+            } catch (e) {
+                document.getElementById('history-body').innerHTML =
+                    '<div class="empty-state">Failed to load history.</div>';
+            }
         }
 
+        async function openHistorySession(requestId, startedAt, type, deviceCount) {
+            document.getElementById('history-index-section').style.display = 'none';
+            document.getElementById('history-detail-section').style.display = 'block';
+
+            const shortId = requestId.substring(0, 8);
+            document.getElementById('history-detail-title').textContent =
+                `Session ${shortId}… — ${type === 'targeted' ? 'Targeted Search' : 'Full Network Scan'}`;
+            document.getElementById('history-detail-meta').innerHTML =
+                `<span>📅 ${startedAt || '—'}</span>
+                 <span>Session ID: <span class="mono">${escHtml(requestId)}</span></span>`;
+            document.getElementById('history-detail-count').textContent = 'Loading devices…';
+            document.getElementById('history-detail-body').innerHTML = '<div class="empty-state">Loading…</div>';
+            document.getElementById('history-search-filter').value = '';
+            document.getElementById('history-filter-bar').style.display = 'none';
+            activeHistoryChip = 'all';
+
+            try {
+                const res = await fetch(`/api/history/${encodeURIComponent(requestId)}`);
+                if (!res.ok) {
+                    let errMsg = `Server returned ${res.status}`;
+                    try { const e = await res.json(); errMsg += ': ' + (e.error || JSON.stringify(e)); } catch (_) { }
+                    document.getElementById('history-detail-count').textContent = '';
+                    document.getElementById('history-detail-body').innerHTML =
+                        `<div class="empty-state" style="color:#dc3545;">${escHtml(errMsg)}</div>`;
+                    return;
+                }
+                const data = await res.json();
+                currentHistorySession = data;
+                currentHistoryDevices = Array.isArray(data.devices) ? data.devices : [];
+
+                const counts = { 'managed': 0, 'managed-hotspot': 0, 'unmanaged-hotspot': 0, 'unmanaged': 0 };
+                currentHistoryDevices.forEach(d => counts[deviceCategory(d)]++);
+                const total = currentHistoryDevices.length;
+
+                // Update history chips
+                document.getElementById('hchip-count-all').textContent = total;
+                document.getElementById('hchip-count-managed').textContent = counts['managed'];
+                document.getElementById('hchip-count-managed-hotspot').textContent = counts['managed-hotspot'];
+                document.getElementById('hchip-count-unmanaged-hotspot').textContent = counts['unmanaged-hotspot'];
+                document.getElementById('hchip-count-unmanaged').textContent = counts['unmanaged'];
+
+                document.getElementById('history-detail-count').innerHTML =
+                    `${total} device(s) &nbsp;·&nbsp; ` +
+                    `<span class="badge badge-managed">MANAGED ${counts['managed']}</span> &nbsp;` +
+                    `<span class="badge badge-managed-hotspot">MANAGED HOTSPOT ${counts['managed-hotspot']}</span> &nbsp;` +
+                    `<span class="badge badge-unmanaged-hotspot">UNMANAGED HOTSPOT ${counts['unmanaged-hotspot']}</span> &nbsp;` +
+                    `<span class="badge badge-unmanaged">UNMANAGED ${counts['unmanaged']}</span>`;
+
+                document.getElementById('history-filter-bar').style.display = total > 0 ? 'flex' : 'none';
+                // reset all chips to "all" active
+                setHistoryChipFilter('all', /* skipRender */ false);
+
+            } catch (e) {
+                document.getElementById('history-detail-body').innerHTML =
+                    `<div class="empty-state">Error: ${escHtml(e.message)}</div>`;
+            }
+        }
+
+        function setHistoryChipFilter(cat, skipRender) {
+            activeHistoryChip = cat;
+            ['all', 'managed', 'managed-hotspot', 'unmanaged-hotspot', 'unmanaged'].forEach(c => {
+                const chip = document.getElementById('hchip-' + c);
+                if (chip) chip.classList.toggle('active', c === cat);
+            });
+            if (!skipRender) renderHistoryDetail();
+        }
+
+        function filterHistoryDetail() { renderHistoryDetail(); }
+
+        function renderHistoryDetail() {
+            const body = document.getElementById('history-detail-body');
+            const query = (document.getElementById('history-search-filter')?.value || '').trim().toLowerCase();
+            const cat = activeHistoryChip;
+
+            if (!currentHistoryDevices || currentHistoryDevices.length === 0) {
+                body.innerHTML = '<div class="empty-state">No devices found in this session.</div>';
+                return;
+            }
+
+            const filtered = currentHistoryDevices.filter(d => {
+                if (cat !== 'all' && deviceCategory(d) !== cat) return false;
+                if (!query) return true;
+                return ['hostname', 'ip', 'mac', 'building', 'room', 'username', 'vendor', 'relay_host', 'relay_building', 'relay_room']
+                    .some(k => (d[k] || '').toLowerCase().includes(query));
+            });
+
+            if (filtered.length === 0) {
+                body.innerHTML = '<div class="empty-state">No matching devices found.</div>';
+                return;
+            }
+            body.innerHTML = buildDeviceTableHTML(filtered);
+        }
+
+        function backToHistoryIndex() {
+            document.getElementById('history-index-section').style.display = '';
+            document.getElementById('history-detail-section').style.display = 'none';
+            currentHistorySession = null;
+            currentHistoryDevices = [];
+            activeHistoryChip = 'all';
+        }
+
+        function exportHistoryCSV() {
+            if (currentHistorySession?.request_id) {
+                window.open(`/api/export/${encodeURIComponent(currentHistorySession.request_id)}`);
+            }
+        }
+
+        // ── Utilities ─────────────────────────────────────────────────────────
         function exportCSV() {
             if (currentRequestId) window.open(`/api/export/${currentRequestId}`);
         }
@@ -803,22 +1739,42 @@
         function clearResults() {
             currentRequestId = null;
             currentDevices = [];
+            activeStatFilter = 'all';
+
             if (pollTimer) clearInterval(pollTimer);
             if (countdownTimer) clearInterval(countdownTimer);
             pollStart = null;
-            ['stat-total', 'stat-managed', 'stat-relayed', 'stat-unmanaged'].forEach(id => {
-                document.getElementById(id).textContent = '—';
+
+            ['stat-total', 'stat-managed', 'stat-managed-hotspot', 'stat-unmanaged-hotspot', 'stat-unmanaged'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '—';
             });
-            
+
+            // Reset chip counts
+            ['all', 'managed', 'managed-hotspot', 'unmanaged-hotspot', 'unmanaged'].forEach(c => {
+                const el = document.getElementById('chip-count-' + c);
+                if (el) el.textContent = '0';
+                const chip = document.getElementById('chip-' + c);
+                if (chip) chip.classList.toggle('active', c === 'all');
+            });
+
+            // Reset stat card highlights
+            ['all', 'managed', 'managed-hotspot', 'unmanaged-hotspot', 'unmanaged'].forEach(c => {
+                const box = document.getElementById('statbox-' + c);
+                if (box) box.classList.toggle('active-filter', c === 'all');
+            });
+
             const filterInput = document.getElementById('search-filter');
             if (filterInput) filterInput.value = '';
-            
-            const searchContainer = document.getElementById('search-container');
-            if (searchContainer) searchContainer.style.display = 'none';
+
+            const sc = document.getElementById('search-container');
+            if (sc) sc.style.display = 'none';
+            const fb = document.getElementById('filter-bar');
+            if (fb) fb.style.display = 'none';
 
             document.getElementById('results-body').innerHTML =
                 '<div class="empty-state">Initiate a search or full scan above to locate devices.</div>';
-            document.getElementById('results-label').textContent = 'Discovery results';
+            document.getElementById('results-label').textContent = 'Discovery Results';
             document.getElementById('results-status').textContent = '';
             document.getElementById('export-btn').disabled = true;
         }
@@ -828,6 +1784,194 @@
                 .replace(/&/g, '&amp;').replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
         }
+
+        // ── Smart target input — MAC / IP formatter ───────────────────────────
+        (function () {
+            const MODE = () => document.getElementById('target-mode').value;
+            const EXAMPLE = () => document.getElementById('target-format-example');
+
+            function setIcon(el, state) {
+                if (!el) return;
+                if (state === 'hide') { el.style.display = 'none'; return; }
+                el.style.display = 'inline';
+                el.textContent = state === 'ok' ? '✓' : '✗';
+                el.style.color = state === 'ok' ? '#28a745' : '#dc3545';
+            }
+
+            // MAC formatter
+            const macInp = document.getElementById('target-input-mac');
+            const macIcon = document.getElementById('mac-valid-icon');
+
+            function isValidMAC(v) { return /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(v); }
+
+            function refreshMACIcon() {
+                const v = macInp.value;
+                if (!v) { setIcon(macIcon, 'hide'); return; }
+                setIcon(macIcon, isValidMAC(v) ? 'ok' : 'err');
+            }
+
+            macInp.addEventListener('keydown', function (e) {
+                const key = e.key;
+                if (['ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End', 'Delete'].includes(key)) return;
+                if (key === 'Enter') { triggerTargeted(); return; }
+
+                if (key === 'Backspace') {
+                    const pos = macInp.selectionStart;
+                    if (macInp.selectionStart === macInp.selectionEnd && pos > 0 && macInp.value[pos - 1] === ':') {
+                        e.preventDefault();
+                        macInp.value = macInp.value.slice(0, pos - 1) + macInp.value.slice(pos);
+                        macInp.setSelectionRange(pos - 1, pos - 1);
+                    }
+                    refreshMACIcon();
+                    return;
+                }
+
+                if (!/^[0-9a-fA-F]$/.test(key)) { e.preventDefault(); return; }
+                e.preventDefault();
+                const pos = macInp.selectionStart;
+                const hexKey = key.toUpperCase();
+                const raw = macInp.value.replace(/:/g, '');
+                if (raw.length >= 12) return;
+
+                const group = Math.floor(pos / 3);
+                const offset = pos % 3;
+                const rawPos = group * 2 + Math.min(offset, 2);
+                const newRaw = raw.slice(0, rawPos) + hexKey + raw.slice(rawPos);
+                const pairs = newRaw.match(/.{1,2}/g) || [];
+                macInp.value = pairs.join(':');
+
+                const newRawPos = rawPos + 1;
+                const newGroup = Math.floor(newRawPos / 2);
+                const newOffset = newRawPos % 2;
+                let newPos = newGroup * 3 + newOffset;
+                if (newPos > macInp.value.length) newPos = macInp.value.length;
+                macInp.setSelectionRange(newPos, newPos);
+                refreshMACIcon();
+            });
+
+            macInp.addEventListener('paste', function (e) {
+                e.preventDefault();
+                const raw = (e.clipboardData || window.clipboardData).getData('text').trim();
+                const hex = raw.replace(/[:\-\s]/g, '').toUpperCase();
+                if (/^[0-9A-F]{12}$/.test(hex)) {
+                    macInp.value = hex.match(/.{2}/g).join(':');
+                    refreshMACIcon();
+                } else {
+                    toast('Paste a valid MAC address (e.g. AA:BB:CC:DD:EE:FF)');
+                }
+            });
+
+            // IP formatter
+            const ipOctets = [1, 2, 3, 4].map(n => document.getElementById(`ip-o${n}`));
+            const ipIcon = document.getElementById('ip-valid-icon');
+            const ipWrapBox = document.querySelector('#ip-input-wrap > div');
+
+            function getIPValue() { return ipOctets.map(o => o.value).join('.'); }
+            function isValidIP(v) {
+                const p = v.split('.');
+                return p.length === 4 && p.every(s => s !== '' && +s >= 0 && +s <= 255);
+            }
+            function refreshIPIcon() {
+                const allFilled = ipOctets.every(o => o.value !== '');
+                if (!allFilled) { setIcon(ipIcon, 'hide'); return; }
+                setIcon(ipIcon, isValidIP(getIPValue()) ? 'ok' : 'err');
+            }
+            function focusOctet(idx, selectAll) {
+                if (idx < 0 || idx > 3) return;
+                ipOctets[idx].focus();
+                if (selectAll) { ipOctets[idx].select(); }
+                else { const len = ipOctets[idx].value.length; ipOctets[idx].setSelectionRange(len, len); }
+            }
+            function clampOctet(el) {
+                const v = parseInt(el.value, 10);
+                if (!isNaN(v) && v > 255) { el.value = '255'; return true; }
+                return false;
+            }
+
+            ipOctets.forEach(function (el, idx) {
+                el.addEventListener('keydown', function (e) {
+                    const key = e.key;
+                    if (key === 'Enter') { triggerTargeted(); return; }
+                    if (key === 'Tab') return;
+                    if ((key === 'ArrowRight' || key === '.') && el.selectionStart === el.value.length) {
+                        e.preventDefault(); clampOctet(el); if (idx < 3) focusOctet(idx + 1, true); refreshIPIcon(); return;
+                    }
+                    if (key === 'ArrowLeft' && el.selectionStart === 0) {
+                        e.preventDefault(); if (idx > 0) focusOctet(idx - 1, false); return;
+                    }
+                    if (key === 'Backspace' && el.value === '') {
+                        e.preventDefault(); if (idx > 0) focusOctet(idx - 1, false); refreshIPIcon(); return;
+                    }
+                    if (!/^\d$/.test(key)) { e.preventDefault(); return; }
+                    const hasSelection = el.selectionStart !== el.selectionEnd;
+                    if (!hasSelection && el.value.length >= 3) { e.preventDefault(); return; }
+                });
+
+                el.addEventListener('input', function () {
+                    el.value = el.value.replace(/\D/g, '');
+                    const clamped = clampOctet(el);
+                    const val = el.value;
+                    const numVal = parseInt(val, 10);
+                    const shouldAdvance = clamped || val.length === 3 || (val.length === 2 && numVal > 25);
+                    if (shouldAdvance && idx < 3) focusOctet(idx + 1, true);
+                    refreshIPIcon();
+                });
+
+                el.addEventListener('focus', function () {
+                    setTimeout(() => el.select(), 0);
+                    if (ipWrapBox) ipWrapBox.style.borderColor = '#80bdff';
+                });
+                el.addEventListener('blur', function () {
+                    if (ipWrapBox) {
+                        const anyFocused = ipOctets.some(o => o === document.activeElement);
+                        if (!anyFocused) ipWrapBox.style.borderColor = '#ced4da';
+                    }
+                    refreshIPIcon();
+                });
+
+                el.addEventListener('paste', function (e) {
+                    e.preventDefault();
+                    const raw = (e.clipboardData || window.clipboardData).getData('text').trim();
+                    if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(raw)) {
+                        const parts = raw.split('.');
+                        if (parts.every(p => +p >= 0 && +p <= 255)) {
+                            ipOctets.forEach((o, i) => { o.value = parts[i]; });
+                            focusOctet(3, false); refreshIPIcon(); return;
+                        }
+                    }
+                    const num = parseInt(raw, 10);
+                    if (!isNaN(num) && num >= 0 && num <= 255) {
+                        el.value = String(num);
+                        if (idx < 3) focusOctet(idx + 1, true);
+                    } else {
+                        toast('Paste a valid IP address (e.g. 192.168.1.10)');
+                    }
+                    refreshIPIcon();
+                });
+            });
+
+            function onModeChange() {
+                const isMac = MODE() === 'mac';
+                document.getElementById('mac-input-wrap').style.display = isMac ? '' : 'none';
+                document.getElementById('ip-input-wrap').style.display = isMac ? 'none' : '';
+                if (isMac) {
+                    EXAMPLE().textContent = 'AA:BB:CC:DD:EE:FF';
+                    macInp.value = ''; setIcon(macIcon, 'hide'); macInp.focus();
+                } else {
+                    EXAMPLE().textContent = '0–255 · 0–255 · 0–255 · 0–255';
+                    ipOctets.forEach(o => { o.value = ''; }); setIcon(ipIcon, 'hide'); focusOctet(0, false);
+                }
+            }
+
+            function getTargetValue() {
+                return MODE() === 'mac' ? macInp.value.trim() : getIPValue();
+            }
+
+            window.onModeChange = onModeChange;
+            window.getTargetValue = getTargetValue;
+
+            document.addEventListener('DOMContentLoaded', () => { macInp.focus(); loadRanges(); });
+        })();
     </script>
 </body>
 
