@@ -26,7 +26,8 @@ instance/
 build/
 dist/
 *.egg-info/
-.eggs/
+/.eggs/
+*.spec
 
 # pytest / coverage
 .pytest_cache/
@@ -51,3 +52,4 @@ Desktop.ini
 data/
 server.pid
 server_log.txt
+qt_data/

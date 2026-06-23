@@ -71,7 +71,8 @@ broadcaster = DiscoveryBroadcaster(Config, store)
 ARP_SCAN_DELAY_SECONDS = 8
 
 # Max concurrent ping workers per subnet during the ARP sweep.
-ARP_SCAN_MAX_WORKERS = 32
+# Reduced to 16 to prevent Windows process scheduler exhaustion.
+ARP_SCAN_MAX_WORKERS = 16
 
 
 # ── Security helpers ──────────────────────────────────────────────────────────
@@ -205,6 +206,12 @@ def run_arp_scan_for_session(request_id: str):
         )
 
         for net in networks:
+            # SAFETY CHECK: Do not ARP-scan networks larger than /22 (1024 hosts)
+            # Scanning 1000+ IPs individually is too heavy for a single Windows machine.
+            if net.num_addresses > 1024:
+                log.warning("ARP scan: Skipping %s (too large: %d hosts). Limit is 1024.", net, net.num_addresses)
+                continue
+
             try:
                 found = scan_subnet(net, max_workers=ARP_SCAN_MAX_WORKERS)
             except Exception as e:
