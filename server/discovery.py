@@ -29,6 +29,7 @@ import logging
 import threading
 import struct
 from datetime import datetime, timezone
+import psutil
 
 log = logging.getLogger("mneti.broadcaster")
 
@@ -44,78 +45,29 @@ def _sign_payload(payload: bytes, secret: str) -> str:
     return hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
 
 
-def _get_all_local_interfaces() -> list[dict]:
-    """
-    Return a list of dicts for every active local IPv4 interface.
-
-    Each entry:
-        {
-            "ip":        "10.51.144.14",
-            "broadcast": "10.51.144.255",
-        }
-
-    Loopback (127.x) and APIPA (169.254.x) addresses are excluded.
-    Only RFC-1918 private addresses are included so we never accidentally
-    broadcast on a public interface.
-    """
-    private_nets = [
-        ipaddress.ip_network("10.0.0.0/8"),
-        ipaddress.ip_network("172.16.0.0/12"),
-        ipaddress.ip_network("192.168.0.0/16"),
-    ]
-
+def _get_all_local_interfaces():
     interfaces = []
-    try:
-        hostname = socket.gethostname()
-        _, _, ip_list = socket.gethostbyname_ex(hostname)
-        for ip_str in ip_list:
-            try:
-                addr = ipaddress.ip_address(ip_str)
-                if addr.is_loopback or addr.is_link_local:
-                    continue
-                in_private = any(addr in net for net in private_nets)
-                if not in_private:
-                    continue
-                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                sock.bind((ip_str, 0))
-                network = ipaddress.ip_interface(f"{ip_str}/24").network
-                broadcast = str(network.broadcast_address)
-                sock.close()
-                interfaces.append({"ip": ip_str, "broadcast": broadcast})
-            except Exception:
-                continue
-    except Exception as e:
-        log.warning("Interface enumeration error: %s", e)
-
-    # Prefer netifaces for accurate netmask data if available
-    try:
-        import netifaces
-        interfaces = []
-        for iface in netifaces.interfaces():
-            addrs = netifaces.ifaddresses(iface)
-            if netifaces.AF_INET not in addrs:
-                continue
-            for entry in addrs[netifaces.AF_INET]:
-                ip_str    = entry.get("addr", "")
-                broadcast = entry.get("broadcast", "")
-                if not ip_str or not broadcast:
-                    continue
+    for iface_name, addrs in psutil.net_if_addrs().items():
+        stats = psutil.net_if_stats().get(iface_name)
+        if stats and not stats.isup:
+            continue  # skip interfaces that are down
+        for addr in addrs:
+            if addr.family.name == "AF_INET":  # IPv4 only
+                ip = addr.address
+                netmask = addr.netmask or "255.255.255.0"
+                # Compute broadcast from IP + netmask
                 try:
-                    addr = ipaddress.ip_address(ip_str)
-                    if addr.is_loopback or addr.is_link_local:
-                        continue
-                    in_private = any(addr in net for net in private_nets)
-                    if not in_private:
-                        continue
-                    interfaces.append({"ip": ip_str, "broadcast": broadcast})
-                except Exception:
+                    import ipaddress
+                    iface_obj = ipaddress.IPv4Interface(f"{ip}/{netmask}")
+                    broadcast = str(iface_obj.network.broadcast_address)
+                    interfaces.append({
+                        "name":      iface_name,
+                        "ip":        ip,
+                        "netmask":   netmask,
+                        "broadcast": broadcast,
+                    })
+                except ValueError:
                     continue
-    except ImportError:
-        pass
-
-    if not interfaces:
-        interfaces = [{"ip": "0.0.0.0", "broadcast": "255.255.255.255"}]
-
     return interfaces
 
 

@@ -135,25 +135,27 @@ def lookup_vendor(mac: str) -> str:
 # ── Server-side ARP scan ──────────────────────────────────────────────────────
 
 def _scan_networks_for_session() -> list[ipaddress.IPv4Network]:
-    """
-    Build the list of subnets to ARP-scan for a full-discovery session:
-      - Every local interface's /24 (server's directly-attached subnets)
-      - Every custom broadcast range configured via the dashboard
-        (e.g. 10.51.144.0/22), which lets users widen the scan beyond
-        what any single interface's mask would imply.
-
-    Duplicate/overlapping networks are de-duplicated by their string form.
-    """
     networks: list[ipaddress.IPv4Network] = []
 
     for iface in _get_all_local_interfaces():
         try:
-            networks.append(
-                ipaddress.ip_interface(f"{iface['ip']}/24").network
-            )
+            # Derive the network from the actual broadcast address
+            # rather than forcing /24
+            ip = iface["ip"]
+            broadcast = iface["broadcast"]
+            # Find the prefix by checking which network contains both
+            for prefix in range(32, 7, -1):
+                net = ipaddress.ip_interface(f"{ip}/{prefix}").network
+                if str(net.broadcast_address) == broadcast:
+                    networks.append(net)
+                    break
+            else:
+                # fallback
+                networks.append(ipaddress.ip_interface(f"{ip}/24").network)
         except Exception:
             continue
 
+    # Custom ranges (unchanged)
     for pr in broadcaster.get_custom_ranges():
         try:
             networks.append(ipaddress.ip_network(pr["network"]))
