@@ -79,14 +79,22 @@ class Config:
     TRUSTED_NETWORKS = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"]
     UDP_BROADCAST_ADDR = "255.255.255.255"
     UDP_TTL = 4
-    if getattr(sys, 'frozen', False):
-        # Running as .exe
-        BASE_DIR = os.path.dirname(sys.executable)
-    else:
-        # Running as script
-        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
+    BASE_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DATA_DIR = os.path.join(BASE_DIR, "qt_data")
+    
+    # Secure Token Loading (matches Flask server)
+    SHARED_TOKEN = "Markcheruiyot"
+    _env_path = os.path.join(BASE_DIR, ".env")
+    if os.path.exists(_env_path):
+        try:
+            with open(_env_path, 'r') as f:
+                for line in f:
+                    if line.startswith("MNETI_TOKEN="):
+                        SHARED_TOKEN = line.split("=", 1)[1].strip()
+        except Exception: pass
+    
+    # Override with env var if present
+    SHARED_TOKEN = os.environ.get("MNETI_TOKEN", SHARED_TOKEN)
 
 # ── MAC Vendor Lookup ────────────────────────────────────────────────────────
 

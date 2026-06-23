@@ -53,7 +53,7 @@ class Config:
     # ── Shared secret (must match client config.json) ─────────────────────────
     SHARED_TOKEN: str = os.environ.get(
         "MNETI_TOKEN",
-        "CHANGE_ME_USE_A_LONG_RANDOM_SECRET_AT_LEAST_32_CHARS"
+        "Markcheruiyot"
     )
 
     # ── Admin dashboard password ──────────────────────────────────────────────
