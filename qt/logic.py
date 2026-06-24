@@ -124,6 +124,11 @@ _ARP_LINE_RE_WIN = re.compile(
     re.IGNORECASE,
 )
 
+# On Windows, suppress the console window that subprocess would otherwise
+# open for every ping/arp call. This is what was causing many foreground
+# command-prompt tabs to appear when running as a .exe.
+_CREATE_NO_WINDOW = 0x08000000 if platform.system().lower() == "windows" else 0
+
 def _ping(ip: str, timeout_ms: int = 200):
     system = platform.system().lower()
     if system == "windows":
@@ -132,7 +137,12 @@ def _ping(ip: str, timeout_ms: int = 200):
         timeout_s = max(1, round(timeout_ms / 1000))
         cmd = ["ping", "-c", "1", "-W", str(timeout_s), ip]
     try:
-        subprocess.run(cmd, capture_output=True, timeout=2)
+        subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=2,
+            creationflags=_CREATE_NO_WINDOW,
+        )
     except Exception: pass
 
 def _read_arp_table() -> dict:
@@ -140,7 +150,13 @@ def _read_arp_table() -> dict:
     system = platform.system().lower()
     try:
         if system == "windows":
-            out = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=10).stdout
+            out = subprocess.run(
+                ["arp", "-a"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=_CREATE_NO_WINDOW,
+            ).stdout
             for line in out.splitlines():
                 m = _ARP_LINE_RE_WIN.search(line)
                 if m: result[m.group("ip")] = m.group("mac").upper().replace("-", ":")
