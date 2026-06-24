@@ -225,9 +225,29 @@ function Get-RelayNetworks {
     param([string]$SenderIP)
     $relayNets = @()
     $seen      = @{}
+
+    # Virtual/loopback adapter name patterns to always skip
+    $skipPatterns = @('*WSL*', '*Loopback*', '*Bluetooth*', '*vEthernet*', 
+                      '*Virtual*', '*Hyper-V*', '*Tunnel*', '*isatap*', '*Teredo*')
+
     try {
         Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | ForEach-Object {
             $adapter = $_
+
+            # FIX 1: Skip virtual/software adapters (WSL, Hyper-V, etc.)
+            $adapterName = $adapter.Name
+            $isVirtual = $false
+            foreach ($pattern in $skipPatterns) {
+                if ($adapterName -like $pattern -or $adapter.InterfaceDescription -like $pattern) {
+                    $isVirtual = $true
+                    break
+                }
+            }
+            if ($isVirtual) {
+                Write-Info "Skipping virtual adapter: $adapterName"
+                return
+            }
+
             $addrs = Get-NetIPAddress -InterfaceIndex $adapter.InterfaceIndex `
                                       -AddressFamily IPv4 -ErrorAction SilentlyContinue
             foreach ($addr in $addrs) {
@@ -236,18 +256,24 @@ function Get-RelayNetworks {
                 if ($ip -like '127.*' -or $ip -like '169.254.*') { continue }
                 if (-not (Test-IsPrivateIP -IP $ip)) { continue }
 
-                $myBcast     = Get-SubnetBroadcast -IP $ip -PrefixLength $prefix
-                $senderBcast = Get-SubnetBroadcast -IP $SenderIP -PrefixLength $prefix
-                if ($myBcast -eq $senderBcast) {
-                    Write-Debug2 "Skipping originating subnet for relay: $ip/$prefix"
-                    continue
+                # FIX 2: Check if this adapter's IP is in the same subnet as the sender
+                # using THIS adapter's own prefix length. Also check with common prefix
+                # lengths (/22, /23, /24) to catch misconfigured adapters on the same
+                # physical network segment.
+                $skipThisAdapter = $false
+                foreach ($testPrefix in @($prefix, 22, 23, 24)) {
+                    $myBcast     = Get-SubnetBroadcast -IP $ip     -PrefixLength $testPrefix
+                    $senderBcast = Get-SubnetBroadcast -IP $SenderIP -PrefixLength $testPrefix
+                    if ($myBcast -eq $senderBcast) {
+                        Write-Info "Skipping subnet same as originator (prefix /$testPrefix match): $ip/$prefix"
+                        $skipThisAdapter = $true
+                        break
+                    }
                 }
+                if ($skipThisAdapter) { continue }
 
                 $dedupKey = "$ip/$prefix"
-                if ($seen.ContainsKey($dedupKey)) {
-                    Write-Debug2 "Skipping duplicate relay subnet: $dedupKey"
-                    continue
-                }
+                if ($seen.ContainsKey($dedupKey)) { continue }
                 $seen[$dedupKey] = $true
 
                 $broadcast = Get-SubnetBroadcast -IP $ip -PrefixLength $prefix
@@ -256,9 +282,9 @@ function Get-RelayNetworks {
                     Broadcast   = $broadcast
                     Prefix      = $prefix
                     Interface   = $adapter.InterfaceIndex
-                    AdapterName = $adapter.Name
+                    AdapterName = $adapterName
                 }
-                Write-Info "Relay subnet detected: $ip/$prefix (broadcast $broadcast) on $($adapter.Name)"
+                Write-Info "Relay subnet detected: $ip/$prefix (broadcast $broadcast) on $adapterName"
             }
         }
     } catch {
@@ -792,11 +818,11 @@ function Invoke-PacketHandler {
         }
 
         # Include physical port and connection info if this is a primary subnet discovery
-        if ($isPrimary) {
+        
             $report.connection_type  = $Config.connection_type
             $report.port             = $Config.port
             $report.additional_ports = $Config.additional_ports
-        }
+        
 
         Send-Report -CallbackUrl $callbackUrl -Report $report -Token $Config.token
     }
