@@ -51,6 +51,9 @@ class ApiServerThread(QThread):
                 "relay_room": str(data.get("relay_room", ""))[:64],
                 "vendor": vendor,
                 "reporter_ip": request.remote_addr,
+                "connection_type": str(data.get("connection_type", ""))[:32],
+                "port": str(data.get("port", ""))[:32],
+                "additional_ports": data.get("additional_ports", []),
             }
 
             self.store.add_result(request_id, device)

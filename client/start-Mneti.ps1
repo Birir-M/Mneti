@@ -330,7 +330,11 @@ function Test-Packet {
     $relayDepth = 0
     if ($null -ne $p.relay_depth) { $relayDepth = [int]$p.relay_depth }
 
-    $payloadJson = '{"request_id":"' + $p.request_id + '","mode":"' + $p.mode + '","target":"' + $p.target + '","token":"' + $p.token + '","callback_url":"' + $p.callback_url + '","timestamp":"' + $p.timestamp + '","relay_depth":' + $relayDepth + '}'
+    $isPrimary = $false
+    if ($null -ne $p.is_primary) { $isPrimary = [bool]$p.is_primary }
+
+    # Order must match Flask server _build_packet exactly
+    $payloadJson = '{"request_id":"' + $p.request_id + '","mode":"' + $p.mode + '","target":"' + $p.target + '","token":"' + $p.token + '","callback_url":"' + $p.callback_url + '","timestamp":"' + $p.timestamp + '","relay_depth":' + $relayDepth + ',"is_primary":' + $isPrimary.ToString().ToLower() + '}'
     $expectedSig = Get-HmacSha256 -Secret $Token -Message $payloadJson
 
     if (-not (Test-ConstantTimeEqual $expectedSig $envelope.sig)) {
@@ -715,6 +719,7 @@ function Invoke-PacketHandler {
     $target      = $payload.target
     $callbackUrl = $payload.callback_url
     $relayDepth  = [int]$payload.relay_depth
+    $isPrimary   = [bool]$payload.is_primary
 
     if (-not $requestId -or -not $callbackUrl) {
         Write-Warn "Packet missing request_id or callback_url - dropped"
@@ -785,6 +790,14 @@ function Invoke-PacketHandler {
             relay_room     = ''
             vendor         = if ($primary) { Get-MacVendor -MAC $primary.MAC } else { '' }
         }
+
+        # Include physical port and connection info if this is a primary subnet discovery
+        if ($isPrimary) {
+            $report.connection_type  = $Config.connection_type
+            $report.port             = $Config.port
+            $report.additional_ports = $Config.additional_ports
+        }
+
         Send-Report -CallbackUrl $callbackUrl -Report $report -Token $Config.token
     }
 

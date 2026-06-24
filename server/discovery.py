@@ -84,10 +84,11 @@ class ParsedRange:
         host_count: int                    (number of usable host addresses)
     """
 
-    def __init__(self, network: ipaddress.IPv4Network, label: str):
+    def __init__(self, network: ipaddress.IPv4Network, label: str, is_primary: bool = False):
         self.network    = network
         self.broadcast  = str(network.broadcast_address)
         self.label      = label
+        self.is_primary = is_primary
         # exclude network address and broadcast address
         self.host_count = network.num_addresses - 2
 
@@ -185,13 +186,24 @@ def parse_custom_range(raw: str) -> ParsedRange | None:
         return None
 
 
-def parse_custom_ranges(raw_list: list[str]) -> list[ParsedRange]:
-    """Parse a list of raw range strings, silently dropping invalid entries."""
+def parse_custom_ranges(data_list: list) -> list[ParsedRange]:
+    """
+    Parse a list of range definitions.
+    Input can be a list of strings [\"10.0.0.0/24\", ...] 
+    or a list of dicts [{\"network\": \"10.0.0.0/24\", \"is_primary\": true}, ...]
+    """
     results = []
-    for raw in raw_list:
-        pr = parse_custom_range(raw)
-        if pr is not None:
-            results.append(pr)
+    for item in data_list:
+        if isinstance(item, str):
+            pr = parse_custom_range(item)
+            if pr: results.append(pr)
+        elif isinstance(item, dict):
+            raw = item.get("network") or item.get("label") or ""
+            if not raw: continue
+            pr = parse_custom_range(raw)
+            if pr:
+                pr.is_primary = bool(item.get("is_primary", False))
+                results.append(pr)
     return results
 
 
@@ -210,6 +222,7 @@ def describe_range(pr: ParsedRange) -> dict:
         "host_count":  pr.host_count,
         "prefix_len":  network.prefixlen,
         "netmask":     str(network.netmask),
+        "is_primary":  pr.is_primary,
     }
 
 
@@ -224,24 +237,24 @@ class DiscoveryBroadcaster:
         self._ranges_file = ranges_file
 
         # Load any previously saved custom ranges from disk.
-        saved_raw = self._load_ranges()
-        self._custom_ranges: list[ParsedRange] = parse_custom_ranges(saved_raw)
-        if saved_raw:
+        saved_data = self._load_ranges()
+        self._custom_ranges: list[ParsedRange] = parse_custom_ranges(saved_data)
+        if saved_data:
             log.info(
                 "Loaded %d custom range(s) from %s (%d valid)",
-                len(saved_raw), self._ranges_file, len(self._custom_ranges)
+                len(saved_data), self._ranges_file, len(self._custom_ranges)
             )
 
     # ── Persistence ────────────────────────────────────────────────────────────
 
-    def _load_ranges(self) -> list[str]:
-        """Load previously saved raw range strings from disk, if present."""
+    def _load_ranges(self) -> list:
+        """Load previously saved range objects/strings from disk, if present."""
         try:
             if os.path.exists(self._ranges_file):
                 with open(self._ranges_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 if isinstance(data, list):
-                    return [str(x).strip() for x in data if str(x).strip()]
+                    return data
                 log.warning(
                     "Ranges file %s did not contain a list — ignoring",
                     self._ranges_file
@@ -250,37 +263,31 @@ class DiscoveryBroadcaster:
             log.warning("Failed to load ranges file %s: %s", self._ranges_file, e)
         return []
 
-    def _save_ranges_locked(self, raw_list: list[str]):
-        """Write raw range strings to disk. Caller must hold self._ranges_lock."""
+    def _save_ranges_locked(self, data_list: list):
+        """Write range list to disk. Caller must hold self._ranges_lock."""
         try:
             os.makedirs(os.path.dirname(self._ranges_file), exist_ok=True)
             tmp_path = self._ranges_file + ".tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(raw_list, f, indent=2)
+                json.dump(data_list, f, indent=2)
             os.replace(tmp_path, self._ranges_file)
         except Exception as e:
             log.warning("Failed to save ranges file %s: %s", self._ranges_file, e)
 
     # ── Custom range management ───────────────────────────────────────────────
 
-    def set_custom_ranges(self, raw_list: list[str]) -> list[dict]:
+    def set_custom_ranges(self, data_list: list) -> list[dict]:
         """
         Replace the current custom range list.
-
-        `raw_list` is persisted to disk as-is (including any entries that
-        fail to parse) so that the user's input is preserved across
-        restarts. Invalid entries are simply dropped again on the next
-        load, same as they are dropped here.
-
-        Returns the parsed descriptions so the API can echo them back.
+        Expects a list of objects: [{"network": "...", "is_primary": bool}]
         """
-        parsed = parse_custom_ranges(raw_list)
+        parsed = parse_custom_ranges(data_list)
         with self._ranges_lock:
             self._custom_ranges = parsed
-            self._save_ranges_locked(raw_list)
+            self._save_ranges_locked(data_list)
         log.info(
             "Custom ranges updated: %d valid range(s) from %d input(s)",
-            len(parsed), len(raw_list)
+            len(parsed), len(data_list)
         )
         return [describe_range(pr) for pr in parsed]
 
@@ -316,6 +323,7 @@ class DiscoveryBroadcaster:
         target: str,
         callback_url: str,
         relay_depth: int = 0,
+        is_primary: bool = False,
     ) -> bytes:
         """
         Build a signed discovery envelope.
@@ -329,6 +337,7 @@ class DiscoveryBroadcaster:
             "callback_url": callback_url,
             "timestamp":    datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "relay_depth":  relay_depth,
+            "is_primary":   is_primary,
         }
         payload_json = json.dumps(packet, separators=(",", ":")).encode()
         sig          = _sign_payload(payload_json, self.config.SHARED_TOKEN)
@@ -360,11 +369,12 @@ class DiscoveryBroadcaster:
         mode: str,
         target: str,
         relay_depth: int,
+        is_primary: bool = False,
     ):
         """Send one signed broadcast packet out of a specific local interface."""
         callback_url = self._callback_url_for(iface["ip"])
         data         = self._build_packet(
-            request_id, mode, target, callback_url, relay_depth
+            request_id, mode, target, callback_url, relay_depth, is_primary
         )
         log.info(
             "Broadcast sent (%d bytes) iface=%s -> %s:%d callback=%s",
@@ -386,23 +396,16 @@ class DiscoveryBroadcaster:
     ):
         """
         Broadcast into a user-defined custom range.
-
-        Strategy:
-          • Always send a subnet-directed broadcast to pr.broadcast.
-          • For targeted mode we send only to the broadcast address
-            (agents will still only respond if they are the target —
-            this is enforced on the client side).
-          • We use the server's primary LAN IP as the callback URL
-            because we may not have a local address on the remote subnet.
         """
         callback_url = self._primary_callback_url()
         data = self._build_packet(
-            request_id, mode, target, callback_url, relay_depth
+            request_id, mode, target, callback_url, relay_depth, pr.is_primary
         )
 
         log.info(
-            "Custom-range broadcast (%s) → %s:%d",
+            "Custom-range broadcast (%s, primary=%s) → %s:%d",
             pr.label,
+            pr.is_primary,
             pr.broadcast,
             self.config.UDP_PORT,
         )
@@ -445,7 +448,7 @@ class DiscoveryBroadcaster:
         for iface in interfaces:
             t = threading.Thread(
                 target=self._broadcast_on_interface,
-                args=(iface, request_id, mode, target, relay_depth),
+                args=(iface, request_id, mode, target, relay_depth, False),
                 daemon=True,
             )
             t.start()

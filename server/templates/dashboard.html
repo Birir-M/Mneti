@@ -150,7 +150,32 @@
             min-width: 80px;
         }
 
-        /* ── Buttons ── */
+        .port-tag {
+            display: inline-block;
+            font-size: 11px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin: 2px;
+            font-weight: 600;
+        }
+        .port-in-use {
+            background-color: #e6ffed;
+            color: #22863a;
+            border: 1px solid #28a745;
+        }
+        .port-available {
+            background-color: #f6f8fa;
+            color: #6a737d;
+            border: 1px solid #d1d5da;
+        }
+        .view-toggle-row {
+            padding: 10px 15px;
+            background: #fff;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
         .btn {
             background-color: #f8f9fa;
             border: 1px solid #ced4da;
@@ -914,6 +939,14 @@
                             </div>
                         </div>
 
+                        <!-- View Toggles -->
+                        <div class="view-toggle-row">
+                            <label style="font-size: 12px; font-weight: bold; color: #444; display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                                <input type="checkbox" id="toggle-port-view" onchange="displayFilteredResults()">
+                                Location & Ports Focus View
+                            </label>
+                        </div>
+
                         <!-- Type filter chips — shown once devices arrive -->
                         <div class="filter-bar" id="filter-bar" style="display:none;">
                             <span style="font-size:11px;color:#6c757d;font-weight:bold;margin-right:2px;">Filter:</span>
@@ -1358,9 +1391,29 @@
                     badge = '<span class="badge badge-unmanaged">✕ UNMANAGED</span>';
                 }
 
-                // Location: for unmanaged-hotspot, building/room is inherited from relay host
+                // Location & Ports
+                const roomPortStatus = getRoomPortStatus(devices, d.building, d.room);
+                const isLocationView = document.getElementById('toggle-port-view')?.checked;
+
+                let portsHtml = '';
+                const connLabel = d.connection_type ? `<div style="font-size:10px; color:#666; text-transform:uppercase; font-weight:bold; margin-bottom:2px;">📶 ${escHtml(d.connection_type)}</div>` : '';
+                
+                if (d.port || (d.additional_ports && d.additional_ports.length)) {
+                    const primaryPort = d.port ? `<span class="port-tag port-in-use" title="Connected to this computer">🔌 ${escHtml(d.port)}</span>` : '';
+                    let additionalHtml = '';
+                    if (Array.isArray(d.additional_ports)) {
+                        additionalHtml = d.additional_ports.map(p => {
+                            const inUse = roomPortStatus.inUse.has(p);
+                            return `<span class="port-tag ${inUse ? 'port-in-use' : 'port-available'}" title="${inUse ? 'In use by another computer' : 'Available'}">${inUse ? '🔌' : '⚪'} ${escHtml(p)}</span>`;
+                        }).join('');
+                    }
+                    portsHtml = `<div style="margin-top:4px;">${connLabel}${primaryPort}${additionalHtml}</div>`;
+                } else if (connLabel) {
+                    portsHtml = `<div style="margin-top:4px;">${connLabel}</div>`;
+                }
+
                 const location = d.building
-                    ? `${escHtml(d.building)} · ${escHtml(d.room)}`
+                    ? `<strong>${escHtml(d.building)} · ${escHtml(d.room)}</strong>${portsHtml}`
                     : '<span style="color:#999">—</span>';
 
                 let ts = '—';
@@ -1372,6 +1425,15 @@
                     } catch (_) {
                         ts = d.timestamp.replace('T', ' ').substring(0, 19);
                     }
+                }
+
+                if (isLocationView) {
+                    return `<tr>
+                        <td>${badge}</td>
+                        <td><strong>${escHtml(d.hostname || '—')}</strong><br><span class="mono" style="font-size:11px;color:#666">${escHtml(d.ip)}</span></td>
+                        <td>${location}</td>
+                        <td class="mono" style="font-size:11px;color:#666">${ts}</td>
+                    </tr>`;
                 }
 
                 return `<tr>
@@ -1386,12 +1448,25 @@
                 </tr>`;
             }).join('');
 
+            const isLocationView = document.getElementById('toggle-port-view')?.checked;
+            if (isLocationView) {
+                return `<table>
+                    <thead><tr>
+                        <th>Type</th>
+                        <th>Device</th>
+                        <th>Location & Ports</th>
+                        <th>Timestamp</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>`;
+            }
+
             return `<table>
                 <thead><tr>
                     <th>Type</th>
                     <th>Hostname / IP</th>
                     <th>MAC address</th>
-                    <th>Location</th>
+                    <th>Location & Ports</th>
                     <th>Active user</th>
                     <th>Vendor</th>
                     <th>Timestamp</th>
@@ -1446,8 +1521,10 @@
                 if (filter !== 'all' && deviceCategory(d) !== filter) return false;
                 // Text search
                 if (!query) return true;
-                return ['hostname', 'ip', 'mac', 'building', 'room', 'username', 'vendor', 'relay_host', 'relay_building', 'relay_room']
-                    .some(k => (d[k] || '').toLowerCase().includes(query));
+                const searchFields = ['hostname', 'ip', 'mac', 'building', 'room', 'username', 'vendor', 'relay_host', 'relay_building', 'relay_room', 'port'];
+                const match = searchFields.some(k => (d[k] || '').toLowerCase().includes(query));
+                const portMatch = Array.isArray(d.additional_ports) && d.additional_ports.some(p => p.toLowerCase().includes(query));
+                return match || portMatch;
             });
 
             if (filtered.length === 0) {
@@ -1457,6 +1534,22 @@
             }
 
             document.getElementById('results-body').innerHTML = buildDeviceTableHTML(filtered);
+        }
+
+        function getRoomPortStatus(devices, building, room) {
+            const roomDevices = devices.filter(d => d.building === building && d.room === room);
+            const inUse = new Set();
+            const allPorts = new Set();
+            roomDevices.forEach(d => {
+                if (d.port) {
+                    inUse.add(d.port);
+                    allPorts.add(d.port);
+                }
+                if (Array.isArray(d.additional_ports)) {
+                    d.additional_ports.forEach(p => allPorts.add(p));
+                }
+            });
+            return { inUse, allPorts };
         }
 
         // ── Broadcast Ranges ──────────────────────────────────────────────────
@@ -1493,15 +1586,22 @@
             const savedMap = {};
             savedRanges.forEach(r => { savedMap[r.label] = r; });
 
-            const items = pendingRanges.map((label, idx) => {
+            const items = pendingRanges.map((item, idx) => {
+                const label = typeof item === 'string' ? item : item.network;
+                const isPrimary = typeof item === 'object' ? !!item.is_primary : (savedMap[label]?.is_primary || false);
+                
                 const saved = savedMap[label];
                 const detail = saved
                     ? `${saved.network} · broadcast ${saved.broadcast} · ${saved.host_count.toLocaleString()} hosts · /${saved.prefix_len} (${saved.netmask})`
                     : '<em style="color:#aaa">Not yet saved — click Save to apply</em>';
+                
                 return `<div class="range-item">
-                    <div>
-                        <div class="range-item-label">${escHtml(label)}</div>
-                        <div class="range-item-detail">${detail}</div>
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <input type="checkbox" title="Is Primary Subnet?" ${isPrimary ? 'checked' : ''} onchange="toggleRangePrimary(${idx}, this.checked)">
+                        <div>
+                            <div class="range-item-label">${escHtml(label)} ${isPrimary ? '<span class="badge badge-managed" style="font-size:9px;margin-left:5px;">PRIMARY</span>' : ''}</div>
+                            <div class="range-item-detail">${detail}</div>
+                        </div>
                     </div>
                     <button class="btn btn-sm btn-danger" onclick="removeRange(${idx})" title="Remove">✕</button>
                 </div>`;
@@ -1528,21 +1628,38 @@
 
         function removeRange(idx) { pendingRanges.splice(idx, 1); renderRangeList(); }
 
+        function toggleRangePrimary(idx, val) {
+            if (typeof pendingRanges[idx] === 'string') {
+                pendingRanges[idx] = { network: pendingRanges[idx], is_primary: val };
+            } else {
+                pendingRanges[idx].is_primary = val;
+            }
+            renderRangeList();
+        }
+
         async function clearAllRanges() { pendingRanges = []; await saveRanges(); }
 
         async function saveRanges() {
             const btn = document.getElementById('btn-save-ranges');
             if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+            
+            // Format ranges for API
+            const payloadRanges = pendingRanges.map(r => {
+                if (typeof r === 'string') return { network: r, is_primary: false };
+                return r;
+            });
+
             try {
                 const res = await fetch('/api/ranges', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ranges: pendingRanges }),
+                    body: JSON.stringify({ ranges: payloadRanges }),
                 });
                 const data = await res.json();
                 if (!res.ok) { toast(data.error || 'Failed to save ranges'); return; }
                 savedRanges = data.ranges || [];
-                pendingRanges = savedRanges.map(r => r.label);
+                // sync pendingRanges back to match saved state
+                pendingRanges = savedRanges.map(r => ({ network: r.network, is_primary: r.is_primary }));
 
                 const rejected = data.rejected || 0;
                 if (rejected > 0) {

@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QStackedWidget, QListWidget, QListWidgetItem, QTableWidget,
     QTableWidgetItem, QHeaderView, QLineEdit, QFormLayout, QFileDialog, 
-    QScrollArea, QFrame
+    QScrollArea, QFrame, QCheckBox
 )
 from PyQt6.QtCore import Qt, pyqtSlot, QTimer, pyqtSignal
 from qt.logic import Config, ResultStore, DiscoveryBroadcaster, get_lan_ip
@@ -212,8 +212,12 @@ class MainWindow(QMainWindow):
         scan_now_btn = QPushButton("Scan This Range Now")
         scan_now_btn.clicked.connect(self.scan_immediate_range)
         
+        self.primary_checkbox = QCheckBox("Mark as Primary")
+        self.primary_checkbox.setToolTip("Agents will only report physical wall ports if discovery comes from a primary subnet.")
+        
         form_h.addWidget(QLabel("Add Range:"))
         form_h.addWidget(self.range_input, 1)
+        form_h.addWidget(self.primary_checkbox)
         form_h.addWidget(add_btn)
         form_h.addWidget(scan_now_btn)
         layout.addWidget(form_panel)
@@ -395,9 +399,11 @@ class MainWindow(QMainWindow):
 
     def add_custom_range(self):
         cidr = self.range_input.text().strip()
+        is_primary = self.primary_checkbox.isChecked()
         if cidr:
-            if self.broadcaster.add_range(cidr, cidr): # Use CIDR as label
+            if self.broadcaster.add_range(cidr, cidr, is_primary): # Use CIDR as label
                 self.range_input.clear()
+                self.primary_checkbox.setChecked(False)
                 self.refresh_ranges_list()
 
     def scan_immediate_range(self):
@@ -445,7 +451,10 @@ class MainWindow(QMainWindow):
     def refresh_ranges_list(self):
         self.ranges_list.clear()
         for r in self.broadcaster.get_ranges():
-            item = QListWidgetItem(f"{r.network} (Broadcast: {r.broadcast}, Hosts: {r.host_count})")
+            prefix = "[PRIMARY] " if r.is_primary else ""
+            item = QListWidgetItem(f"{prefix}{r.network} (Broadcast: {r.broadcast}, Hosts: {r.host_count})")
+            if r.is_primary:
+                item.setForeground(Qt.GlobalColor.blue)
             item.setData(Qt.ItemDataRole.UserRole, str(r.network))
             self.ranges_list.addItem(item)
 

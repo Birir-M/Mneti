@@ -269,11 +269,12 @@ class ResultStore:
 # ── Broadcaster ─────────────────────────────────────────────────────────────
 
 class ParsedRange:
-    def __init__(self, network: ipaddress.IPv4Network, label: str):
+    def __init__(self, network: ipaddress.IPv4Network, label: str, is_primary: bool = False):
         self.network = network
         self.broadcast = str(network.broadcast_address)
         self.label = label
         self.host_count = network.num_addresses - 2
+        self.is_primary = is_primary
 
 class DiscoveryBroadcaster:
     def __init__(self, store):
@@ -287,23 +288,23 @@ class DiscoveryBroadcaster:
             if os.path.exists(self.ranges_file):
                 with open(self.ranges_file, "r", encoding="utf-8") as f:
                     raw = json.load(f)
-                return [ParsedRange(ipaddress.ip_network(r["network"]), r["label"]) for r in raw]
+                return [ParsedRange(ipaddress.ip_network(r["network"]), r["label"], r.get("is_primary", False)) for r in raw]
         except Exception:
             return []
         return []
 
     def _save_ranges(self):
         try:
-            data = [{"network": str(r.network), "label": r.label} for r in self._custom_ranges]
+            data = [{"network": str(r.network), "label": r.label, "is_primary": r.is_primary} for r in self._custom_ranges]
             with open(self.ranges_file, "w", encoding="utf-8") as f:
                 json.dump(data, f)
         except Exception as e:
             log.error(f"Failed to save ranges: {e}")
 
-    def add_range(self, raw_cidr: str, label: str):
+    def add_range(self, raw_cidr: str, label: str, is_primary: bool = False):
         try:
             net = ipaddress.ip_network(raw_cidr, strict=False)
-            self._custom_ranges.append(ParsedRange(net, label))
+            self._custom_ranges.append(ParsedRange(net, label, is_primary))
             self._save_ranges()
             return True
         except Exception:
@@ -339,10 +340,10 @@ class DiscoveryBroadcaster:
 
     def _broadcast_custom_range(self, pr, request_id: str, mode: str, target: str, relay_depth: int):
         callback_url = f"http://{get_lan_ip()}:{Config.HTTP_PORT}/api/report"
-        data = self._build_packet(request_id, mode, target, callback_url)
+        data = self._build_packet(request_id, mode, target, callback_url, pr.is_primary)
         self._send_udp(data, pr.broadcast)
 
-    def _build_packet(self, request_id: str, mode: str, target: str, callback_url: str):
+    def _build_packet(self, request_id: str, mode: str, target: str, callback_url: str, is_primary: bool = False):
         packet = {
             "request_id": request_id,
             "mode": mode,
@@ -351,6 +352,7 @@ class DiscoveryBroadcaster:
             "callback_url": callback_url,
             "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "relay_depth": 0,
+            "is_primary": is_primary,
         }
         payload = json.dumps(packet, separators=(",", ":")).encode()
         sig = hmac.new(Config.SHARED_TOKEN.encode(), payload, hashlib.sha256).hexdigest()
@@ -385,12 +387,12 @@ class DiscoveryBroadcaster:
 
         # Send to local interface broadcasts
         for iface in ifaces:
-            data = self._build_packet(request_id, mode, target, f"http://{iface['ip']}:{Config.HTTP_PORT}/api/report")
+            data = self._build_packet(request_id, mode, target, f"http://{iface['ip']}:{Config.HTTP_PORT}/api/report", False)
             self._send_udp(data, iface["broadcast"], bind_ip=iface["ip"])
         
         # Send to custom (or fallback) ranges
         for r in active_ranges:
-            data = self._build_packet(request_id, mode, target, f"http://{get_lan_ip()}:{Config.HTTP_PORT}/api/report")
+            data = self._build_packet(request_id, mode, target, f"http://{get_lan_ip()}:{Config.HTTP_PORT}/api/report", r.is_primary)
             self._send_udp(data, r.broadcast)
 
     def get_scan_networks(self):

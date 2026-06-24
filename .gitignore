@@ -24,7 +24,7 @@ instance/
 
 # Python build artifacts
 build/
-dist/
+dist/qt_data/
 *.egg-info/
 /.eggs/
 *.spec

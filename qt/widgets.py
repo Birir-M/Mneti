@@ -50,10 +50,10 @@ class BadgeLabel(QLabel):
 class DeviceTable(QTableWidget):
     def __init__(self):
         super().__init__()
-        self.setColumnCount(7)
+        self.setColumnCount(8)
         self.setHorizontalHeaderLabels([
             "Hostname", "MAC Address", "IP Address", 
-            "Type", "Location", "Vendor", "Timestamp"
+            "Type", "Location", "Ports", "Vendor", "Timestamp"
         ])
         self.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.verticalHeader().setVisible(False)
@@ -67,6 +67,8 @@ class DeviceTable(QTableWidget):
         for d in devices:
             dtype = d.get("type", "unmanaged")
             relay_host = d.get("relay_host", "")
+            port = d.get("port", "")
+            additional_ports = d.get("additional_ports", [])
             
             # Determine effective filter type
             effective_type = "managed" if dtype == "managed" else "unmanaged"
@@ -81,9 +83,11 @@ class DeviceTable(QTableWidget):
                 match_fields = [
                     d.get("hostname", ""), d.get("mac", ""), d.get("ip", ""),
                     d.get("username", ""), d.get("building", ""), d.get("room", ""),
-                    d.get("vendor", ""), relay_host
+                    d.get("vendor", ""), relay_host, port
                 ]
-                if not any(search_query in str(f).lower() for f in match_fields):
+                # Include additional ports in search
+                plus_additional = match_fields + (additional_ports if isinstance(additional_ports, list) else [])
+                if not any(search_query in str(f).lower() for f in plus_additional):
                     continue
 
             row = self.rowCount()
@@ -103,9 +107,28 @@ class DeviceTable(QTableWidget):
             if relay_host:
                 location += f"\n(via {relay_host})"
             self.setItem(row, 4, QTableWidgetItem(location))
+
+            # Ports column
+            conn_type = d.get("connection_type", "")
+            prefix = f"📶 {conn_type}: " if conn_type else ""
             
-            self.setItem(row, 5, QTableWidgetItem(d.get("vendor", "")))
-            self.setItem(row, 6, QTableWidgetItem(d.get("timestamp", "")))
+            ports_text = ""
+            if port:
+                ports_text = f"{prefix}🔌 {port}"
+                if additional_ports:
+                    ports_text += f" (+{len(additional_ports)})"
+            elif additional_ports:
+                 ports_text = f"{prefix}⚪ {len(additional_ports)} additional"
+            elif conn_type:
+                 ports_text = f"📶 {conn_type}"
+            
+            ports_item = QTableWidgetItem(ports_text)
+            if additional_ports:
+                ports_item.setToolTip("\n".join(additional_ports))
+            self.setItem(row, 5, ports_item)
+            
+            self.setItem(row, 6, QTableWidgetItem(d.get("vendor", "")))
+            self.setItem(row, 7, QTableWidgetItem(d.get("timestamp", "")))
 
     def _center_widget(self, w):
         container = QWidget()

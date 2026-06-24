@@ -359,14 +359,14 @@ def set_ranges():
     if not data or not isinstance(data.get("ranges"), list):
         return jsonify({"error": "Body must be {\"ranges\": [...]}"}), 400
 
-    raw_list = [str(r).strip() for r in data["ranges"] if str(r).strip()]
-    parsed = broadcaster.set_custom_ranges(raw_list)
+    # broadcaster.set_custom_ranges now handles list of dicts or strings
+    parsed = broadcaster.set_custom_ranges(data["ranges"])
 
-    log.info("Custom ranges updated via API: %d/%d accepted", len(parsed), len(raw_list))
+    log.info("Custom ranges updated via API: %d/%d accepted", len(parsed), len(data["ranges"]))
     return jsonify({
         "ranges":   parsed,
         "accepted": len(parsed),
-        "rejected": len(raw_list) - len(parsed),
+        "rejected": len(data["ranges"]) - len(parsed),
     })
 
 
@@ -445,6 +445,9 @@ def receive_report():
         "vendor":         vendor,
         "received_at":    datetime.now(timezone.utc).isoformat(),
         "reporter_ip":    request.remote_addr,
+        "connection_type": str(data.get("connection_type", ""))[:32],
+        "port":           str(data.get("port", ""))[:32],
+        "additional_ports": data.get("additional_ports", []),
     }
 
     store.add_result(request_id, device)
