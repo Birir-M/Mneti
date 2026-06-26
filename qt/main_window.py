@@ -5,17 +5,18 @@ import csv
 import os
 from datetime import datetime, timezone
 from PyQt6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QStackedWidget, QListWidget, QListWidgetItem, QTableWidget,
-    QTableWidgetItem, QHeaderView, QLineEdit, QFormLayout, QFileDialog, 
+    QTableWidgetItem, QHeaderView, QLineEdit, QFormLayout, QFileDialog,
     QScrollArea, QFrame, QCheckBox
 )
 from PyQt6.QtCore import Qt, pyqtSlot, QTimer, pyqtSignal
 from qt.logic import Config, ResultStore, DiscoveryBroadcaster, get_lan_ip
-from qt.widgets import StatCard, DeviceTable
+from qt.widgets import StatCard, DeviceTable, FilterChipsBar
 from qt.api_server import ApiServerThread
 from qt.styles import LIGHT_STYLE, DARK_STYLE
 from qt.logic import scan_subnet, lookup_vendor
+
 
 class MainWindow(QMainWindow):
     arp_scan_result_received = pyqtSignal(str, dict)
@@ -23,12 +24,12 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Mneti — Administrative Discovery Dashboard")
-        self.resize(1200, 750)   # slightly wider default to give columns room
-        
+        self.resize(1200, 750)
+
         self.countdown_val = 0
         self.countdown_timer = QTimer()
         self.countdown_timer.timeout.connect(self._update_countdown)
-        
+
         self.arp_scan_result_received.connect(self.on_device_reported)
 
         self.store = ResultStore()
@@ -52,36 +53,40 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # ── Sidebar ───────────────────────────────────────────────────────
+        # ── Sidebar ───────────────────────────────────────────────────────────
         self.sidebar = QWidget()
         self.sidebar.setObjectName("Sidebar")
         sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(0, 20, 0, 20)
-        
+
         logo_label = QLabel("MNETI")
         logo_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 20px; padding: 10px 20px;")
         sidebar_layout.addWidget(logo_label)
 
         self.nav_btns = {}
-        for key, text in [("discover", "◈ Discover Devices"), ("ranges", "⊞ Broadcast Ranges"), ("history", "◷ Session History")]:
+        for key, text in [
+            ("discover", "◈ Discover Devices"),
+            ("ranges",   "⊞ Broadcast Ranges"),
+            ("history",  "◷ Session History"),
+        ]:
             btn = QPushButton(text)
             btn.clicked.connect(lambda checked, k=key: self.show_view(k))
             sidebar_layout.addWidget(btn)
             self.nav_btns[key] = btn
 
         sidebar_layout.addStretch()
-        
+
         self.theme_btn = QPushButton("🌙 Dark Mode")
         self.theme_btn.clicked.connect(self.toggle_theme)
         sidebar_layout.addWidget(self.theme_btn)
-        
+
         info_label = QLabel(f"Server: Online\nIP: {get_lan_ip()}")
         info_label.setStyleSheet("font-size: 11px; color: #777; padding: 20px;")
         sidebar_layout.addWidget(info_label)
 
         main_layout.addWidget(self.sidebar)
 
-        # ── Content stack ─────────────────────────────────────────────────
+        # ── Content stack ─────────────────────────────────────────────────────
         self.content_stack = QStackedWidget()
         main_layout.addWidget(self.content_stack)
 
@@ -89,31 +94,51 @@ class MainWindow(QMainWindow):
         self._init_ranges_view()
         self._init_history_view()
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Discover view
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _init_discover_view(self):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(20, 20, 20, 20)
 
-        # ── Header row ────────────────────────────────────────────────────
+        # ── Header row ────────────────────────────────────────────────────────
         header = QHBoxLayout()
 
         title_v = QVBoxLayout()
-        title_v.addWidget(QLabel("Discovery Dashboard", styleSheet="font-size: 20px; font-weight: bold;"))
-        title_v.addWidget(QLabel("Network device location system", styleSheet="font-size: 11px; color: #666;"))
+        title_v.addWidget(QLabel("Discovery Dashboard",
+                                 styleSheet="font-size: 20px; font-weight: bold;"))
+        title_v.addWidget(QLabel("Network device location system",
+                                 styleSheet="font-size: 11px; color: #666;"))
         header.addLayout(title_v)
         header.addStretch()
 
-        # Search
+        # ── Search input — explicitly styled so text is always readable ───────
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 Search IP, MAC, room…")
         self.search_input.setFixedWidth(220)
-        self.search_input.setStyleSheet("padding: 5px 10px; border-radius: 4px; border: 1px solid #ccc;")
+        self.search_input.setStyleSheet(
+            # Hard-code background + text colour so it's legible in both themes.
+            # The border picks up the theme accent on focus.
+            "QLineEdit {"
+            "  background: #ffffff;"
+            "  color: #212529;"
+            "  border: 1px solid #ced4da;"
+            "  border-radius: 4px;"
+            "  padding: 5px 10px;"
+            "  font-size: 13px;"
+            "}"
+            "QLineEdit:focus {"
+            "  border-color: #80bdff;"
+            "  background: #ffffff;"
+            "}"
+        )
         self.search_input.textChanged.connect(self.refresh_table)
         header.addWidget(self.search_input)
 
         header.addSpacing(8)
 
-        # Reset button — clears current view and starts fresh
         self.reset_btn = QPushButton("↺ New Session")
         self.reset_btn.setToolTip("Clear results and start a new discovery session")
         self.reset_btn.clicked.connect(self.reset_session)
@@ -127,10 +152,11 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(header)
 
-        # ── Progress bar ──────────────────────────────────────────────────
+        # ── Progress banner ───────────────────────────────────────────────────
         self.progress_panel = QFrame()
         self.progress_panel.setObjectName("Panel")
-        self.progress_panel.setStyleSheet("background-color: #f0f7ff; border: 1px solid #cce5ff; border-radius: 5px;")
+        self.progress_panel.setStyleSheet(
+            "background-color: #f0f7ff; border: 1px solid #cce5ff; border-radius: 5px;")
         self.progress_panel.hide()
         pp_layout = QHBoxLayout(self.progress_panel)
         self.status_label = QLabel("SEARCHING...")
@@ -139,7 +165,7 @@ class MainWindow(QMainWindow):
         pp_layout.addStretch()
         layout.addWidget(self.progress_panel)
 
-        # ── Stat cards ────────────────────────────────────────────────────
+        # ── Stat cards ────────────────────────────────────────────────────────
         self.stats_bar = QHBoxLayout()
         self.stat_cards = {
             "all":               StatCard("Total Discovered",   0, "#6c757d", "all"),
@@ -149,50 +175,61 @@ class MainWindow(QMainWindow):
             "unmanaged":         StatCard("Unmanaged",          0, "#dc3545", "unmanaged"),
         }
         for card in self.stat_cards.values():
-            card.clicked.connect(self.filter_devices)
+            card.clicked.connect(self._on_stat_card_clicked)
             self.stats_bar.addWidget(card)
         layout.addLayout(self.stats_bar)
 
-        # ── Action panels ─────────────────────────────────────────────────
+        # ── Action panels ─────────────────────────────────────────────────────
         panels = QHBoxLayout()
-        
+
         target_panel = QFrame()
         target_panel.setObjectName("Panel")
         tp_layout = QVBoxLayout(target_panel)
         tp_layout.addWidget(QLabel("Targeted Discovery"))
-        
+
         form = QFormLayout()
         self.target_input = QLineEdit()
         self.target_input.setPlaceholderText("IP or MAC Address")
         form.addRow("Target:", self.target_input)
-        
+
         btn_target = QPushButton("Locate Target")
         btn_target.clicked.connect(self.start_targeted_discovery)
-        
+
         btn_all = QPushButton("Scan Network")
         btn_all.setObjectName("Primary")
         btn_all.clicked.connect(self.start_full_discovery)
-        
+
         tp_layout.addLayout(form)
         tp_layout.addWidget(btn_target)
         tp_layout.addWidget(btn_all)
         panels.addWidget(target_panel)
-        
+
         layout.addLayout(panels)
 
-        # ── Results table ─────────────────────────────────────────────────
+        # ── Filter chips bar (mirrors web dashboard) ──────────────────────────
+        self.chips_bar = FilterChipsBar()
+        self.chips_bar.filter_changed.connect(self._on_chip_filter_changed)
+        layout.addWidget(self.chips_bar)
+
+        # ── Results table ─────────────────────────────────────────────────────
         self.table = DeviceTable()
         layout.addWidget(self.table)
 
         self.content_stack.addWidget(page)
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Ranges view
+    # ─────────────────────────────────────────────────────────────────────────
+
     def _init_ranges_view(self):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(20, 20, 20, 20)
-        
-        layout.addWidget(QLabel("Broadcast Ranges", styleSheet="font-size: 20px; font-weight: bold;"))
-        layout.addWidget(QLabel("Define custom subnets for discovery broadcasts", styleSheet="margin-bottom: 20px;"))
+
+        layout.addWidget(QLabel("Broadcast Ranges",
+                                styleSheet="font-size: 20px; font-weight: bold;"))
+        layout.addWidget(QLabel("Define custom subnets for discovery broadcasts",
+                                styleSheet="margin-bottom: 20px;"))
 
         form_panel = QFrame()
         form_panel.setObjectName("Panel")
@@ -201,31 +238,34 @@ class MainWindow(QMainWindow):
         self.range_input.setPlaceholderText("e.g. 10.51.144.1-254")
         self.range_input.setStyleSheet("font-family: Consolas, monospace;")
         self.range_input.returnPressed.connect(self.add_custom_range)
-        
+
         add_btn = QPushButton("Add")
         add_btn.setObjectName("Primary")
         add_btn.clicked.connect(self.add_custom_range)
-        
+
         scan_now_btn = QPushButton("Scan This Range Now")
         scan_now_btn.clicked.connect(self.scan_immediate_range)
-        
+
         self.primary_checkbox = QCheckBox("Mark as Primary")
-        self.primary_checkbox.setToolTip("Agents will only report physical wall ports if discovery comes from a primary subnet.")
-        
+        self.primary_checkbox.setToolTip(
+            "Agents will only report physical wall ports if discovery comes from a primary subnet.")
+
         form_h.addWidget(QLabel("Add Range:"))
         form_h.addWidget(self.range_input, 1)
         form_h.addWidget(self.primary_checkbox)
         form_h.addWidget(add_btn)
         form_h.addWidget(scan_now_btn)
         layout.addWidget(form_panel)
-        
+
         self.range_preview = QLabel("")
-        self.range_preview.setStyleSheet("font-size: 11px; color: #6c757d; font-family: Consolas, monospace;")
+        self.range_preview.setStyleSheet(
+            "font-size: 11px; color: #6c757d; font-family: Consolas, monospace;")
         layout.addWidget(self.range_preview)
         self.range_input.textChanged.connect(self.update_range_preview)
 
         list_header = QHBoxLayout()
-        list_header.addWidget(QLabel("Saved Discovery Ranges", styleSheet="font-weight: bold; margin-top: 10px;"))
+        list_header.addWidget(QLabel("Saved Discovery Ranges",
+                                     styleSheet="font-weight: bold; margin-top: 10px;"))
         list_header.addStretch()
         scan_all_btn = QPushButton("Scan All Saved Ranges")
         scan_all_btn.clicked.connect(self.scan_all_custom_ranges)
@@ -235,34 +275,42 @@ class MainWindow(QMainWindow):
         self.ranges_list = QListWidget()
         self.ranges_list.setObjectName("Panel")
         layout.addWidget(self.ranges_list)
-        
+
         bottom_btns = QHBoxLayout()
         del_btn = QPushButton("Delete Selected")
         del_btn.clicked.connect(self.delete_custom_range)
         bottom_btns.addWidget(del_btn)
         bottom_btns.addStretch()
         layout.addLayout(bottom_btns)
-        
+
         self.content_stack.addWidget(page)
         self.refresh_ranges_list()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # History view
+    # ─────────────────────────────────────────────────────────────────────────
 
     def _init_history_view(self):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(20, 20, 20, 20)
-        
-        layout.addWidget(QLabel("Session History", styleSheet="font-size: 20px; font-weight: bold;"))
-        
+
+        layout.addWidget(QLabel("Session History",
+                                styleSheet="font-size: 20px; font-weight: bold;"))
+
         self.history_table = QTableWidget()
         self.history_table.setColumnCount(5)
-        self.history_table.setHorizontalHeaderLabels(["Session ID", "Type", "Devices", "Started", "Action"])
-        self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.history_table.setHorizontalHeaderLabels(
+            ["Session ID", "Type", "Devices", "Started", "Action"])
+        self.history_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch)
         self.history_table.verticalHeader().setVisible(False)
         self.history_table.itemDoubleClicked.connect(self.load_history_session_item)
-        self.history_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.history_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows)
         self.history_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.history_table)
-        
+
         self.content_stack.addWidget(page)
 
     # ── Slots & Actions ───────────────────────────────────────────────────────
@@ -272,7 +320,7 @@ class MainWindow(QMainWindow):
             btn.setProperty("active", k == key)
             btn.style().unpolish(btn)
             btn.style().polish(btn)
-        
+
         if key == "discover":
             self.content_stack.setCurrentIndex(0)
         elif key == "ranges":
@@ -289,17 +337,50 @@ class MainWindow(QMainWindow):
 
     def set_theme(self, dark):
         self.setStyleSheet(DARK_STYLE if dark else LIGHT_STYLE)
+        # Keep search input legible in both themes
+        self.search_input.setStyleSheet(
+            "QLineEdit {"
+            "  background: #ffffff;"
+            "  color: #212529;"
+            "  border: 1px solid #ced4da;"
+            "  border-radius: 4px;"
+            "  padding: 5px 10px;"
+            "  font-size: 13px;"
+            "}"
+            "QLineEdit:focus {"
+            "  border-color: #80bdff;"
+            "  background: #ffffff;"
+            "}"
+        )
+
+    # ── Filter routing ────────────────────────────────────────────────────────
+
+    def _on_stat_card_clicked(self, filter_key: str):
+        """Stat card clicked — sync chip bar and refresh table."""
+        self.current_filter = filter_key
+        self.chips_bar._on_chip_clicked(filter_key)   # sync visual state
+        self.refresh_table()
+
+    def _on_chip_filter_changed(self, filter_key: str):
+        """Chip bar changed — update filter and refresh table."""
+        self.current_filter = filter_key
+        self.refresh_table()
+
+    def filter_devices(self, filter_key: str):
+        """Legacy entry point kept for compatibility."""
+        self._on_stat_card_clicked(filter_key)
 
     # ── Session management ────────────────────────────────────────────────────
 
     def reset_session(self):
-        """Clear the current view and deactivate the session — ready for a new scan."""
+        """Clear the current view and deactivate the session."""
         self.countdown_timer.stop()
         self.progress_panel.hide()
         self.active_session_id = None
         self.current_filter = "all"
         for card in self.stat_cards.values():
             card.set_count(0)
+        self.chips_bar.reset()
         self.table.setRowCount(0)
         self.export_btn.setEnabled(False)
         self.search_input.clear()
@@ -313,11 +394,11 @@ class MainWindow(QMainWindow):
         self.broadcaster.broadcast(self.active_session_id, "full")
         self.export_btn.setEnabled(True)
         self.start_countdown(60)
-        
+
         def deferred_scan():
             time.sleep(3.0)
             self.run_background_arp_scan(self.active_session_id)
-            
+
         threading.Thread(target=deferred_scan, daemon=True).start()
 
     def start_targeted_discovery(self):
@@ -333,7 +414,8 @@ class MainWindow(QMainWindow):
 
     def start_countdown(self, seconds):
         self.countdown_val = seconds
-        self.status_label.setText(f"NETWORK SCANNING IN PROGRESS… {self.countdown_val}s REMAINING")
+        self.status_label.setText(
+            f"NETWORK SCANNING IN PROGRESS… {self.countdown_val}s REMAINING")
         self.progress_panel.show()
         self.countdown_timer.start(1000)
 
@@ -344,7 +426,8 @@ class MainWindow(QMainWindow):
             self.status_label.setText("SEARCH COMPLETE — DEVICES SYNCED")
             QTimer.singleShot(5000, self.progress_panel.hide)
         else:
-            self.status_label.setText(f"NETWORK SCANNING IN PROGRESS… {self.countdown_val}s REMAINING")
+            self.status_label.setText(
+                f"NETWORK SCANNING IN PROGRESS… {self.countdown_val}s REMAINING")
 
     def on_device_reported(self, req_id, device):
         if req_id == self.active_session_id:
@@ -374,10 +457,16 @@ class MainWindow(QMainWindow):
         session = self.store.get_session(self.active_session_id)
         if not session:
             return
-        
+
         devices = session["devices"]
-        counts = {"all": len(devices), "managed": 0, "managed_hotspot": 0, "unmanaged_hotspot": 0, "unmanaged": 0}
-        
+        counts = {
+            "all":               len(devices),
+            "managed":           0,
+            "managed_hotspot":   0,
+            "unmanaged_hotspot": 0,
+            "unmanaged":         0,
+        }
+
         for d in devices:
             dtype      = d.get("type", "unmanaged")
             relay_host = d.get("relay_host", "")
@@ -390,27 +479,23 @@ class MainWindow(QMainWindow):
                     counts["unmanaged_hotspot"] += 1
                 else:
                     counts["unmanaged"] += 1
-        
+
         for key, count in counts.items():
             self.stat_cards[key].set_count(count)
+
+        # Keep chip counts in sync
+        self.chips_bar.set_counts(counts)
 
     def refresh_table(self):
         if not self.active_session_id:
             return
         session = self.store.get_session(self.active_session_id)
         if session:
-            self.table.update_devices(session["devices"], self.current_filter, self.search_input.text())
-
-    def filter_devices(self, filter_key):
-        self.current_filter = filter_key
-        self.refresh_table()
-
-    def clear_dashboard(self):
-        """Internal helper used by scan actions to wipe visible state only."""
-        for card in self.stat_cards.values():
-            card.set_count(0)
-        self.table.setRowCount(0)
-        self.export_btn.setEnabled(False)
+            self.table.update_devices(
+                session["devices"],
+                self.current_filter,
+                self.search_input.text(),
+            )
 
     # ── Range management ──────────────────────────────────────────────────────
 
@@ -454,11 +539,14 @@ class MainWindow(QMainWindow):
             return
         pr = parse_custom_range(text)
         if pr:
-            self.range_preview.setText(f"✓ Valid: {pr.network} ({pr.host_count} hosts, broadcast: {pr.broadcast})")
-            self.range_preview.setStyleSheet("font-size: 11px; color: #28a745; font-family: Consolas, monospace;")
+            self.range_preview.setText(
+                f"✓ Valid: {pr.network} ({pr.host_count} hosts, broadcast: {pr.broadcast})")
+            self.range_preview.setStyleSheet(
+                "font-size: 11px; color: #28a745; font-family: Consolas, monospace;")
         else:
             self.range_preview.setText("⚠ Invalid range format")
-            self.range_preview.setStyleSheet("font-size: 11px; color: #dc3545; font-family: Consolas, monospace;")
+            self.range_preview.setStyleSheet(
+                "font-size: 11px; color: #dc3545; font-family: Consolas, monospace;")
 
     def delete_custom_range(self):
         row = self.ranges_list.currentRow()
@@ -470,7 +558,8 @@ class MainWindow(QMainWindow):
         self.ranges_list.clear()
         for r in self.broadcaster.get_ranges():
             prefix = "[PRIMARY] " if r.is_primary else ""
-            item = QListWidgetItem(f"{prefix}{r.network} (Broadcast: {r.broadcast}, Hosts: {r.host_count})")
+            item = QListWidgetItem(
+                f"{prefix}{r.network} (Broadcast: {r.broadcast}, Hosts: {r.host_count})")
             if r.is_primary:
                 item.setForeground(Qt.GlobalColor.blue)
             item.setData(Qt.ItemDataRole.UserRole, str(r.network))
@@ -484,31 +573,33 @@ class MainWindow(QMainWindow):
         for h in reversed(history):
             row = self.history_table.rowCount()
             self.history_table.insertRow(row)
-            
+
             short_id = h['request_id'][:8].upper() + "…"
             id_item = QTableWidgetItem(short_id)
             id_item.setData(Qt.ItemDataRole.UserRole, h['request_id'])
             id_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.history_table.setItem(row, 0, id_item)
-            
+
             dtype = h['type'].replace("_", " ").upper()
             type_item = QTableWidgetItem(dtype)
             type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.history_table.setItem(row, 1, type_item)
-            
+
             count_item = QTableWidgetItem(f"{h['device_count']} devices")
             count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.history_table.setItem(row, 2, count_item)
-            
+
             ts = h['started_at'].replace('T', ' ').split('.')[0]
             ts_item = QTableWidgetItem(ts)
             ts_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.history_table.setItem(row, 3, ts_item)
-            
+
             view_btn = QPushButton("View Session →")
-            view_btn.setStyleSheet("color: #0366d6; border: none; background: transparent; font-weight: bold;")
+            view_btn.setStyleSheet(
+                "color: #0366d6; border: none; background: transparent; font-weight: bold;")
             view_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            view_btn.clicked.connect(lambda checked, rid=h['request_id']: self.load_history_by_id(rid))
+            view_btn.clicked.connect(
+                lambda checked, rid=h['request_id']: self.load_history_by_id(rid))
             self.history_table.setCellWidget(row, 4, view_btn)
 
     def load_history_session_item(self, item):
@@ -532,7 +623,7 @@ class MainWindow(QMainWindow):
         session = self.store.get_session(self.active_session_id)
         if not session:
             return
-        
+
         path, _ = QFileDialog.getSaveFileName(
             self, "Export Results",
             f"discovery_{self.active_session_id[:8]}.csv",
