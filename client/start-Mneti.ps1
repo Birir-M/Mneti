@@ -135,24 +135,7 @@ function Test-AlreadySeen {
 
 # ── Subnet arithmetic ─────────────────────────────────────────────────────────
 #
-# FIX 5 (rev 2): ALL shift/bitwise operators in PowerShell (-shl, -shr, -bnot)
-# work on [int32] internally, so ANY approach using these operators can produce
-# a negative intermediate that throws when cast to [uint32]/[uint64].
-#
-# Failures seen in production:
-#   [uint64]((1 -shl 32) - 1)  → on some PS 5.1 builds (1 -shl 32) = 0,
-#                                  so 0 - 1 = -1 → [uint64](-1) THROWS
-#   -bnot $mask                → always returns [int32]; negative for large masks
-#
-# ZERO-SHIFT SOLUTION — uses only [Math]::Pow ([double]) and uint32 arithmetic:
-#
-#   hostbits = 32 - PrefixLength
-#   hostmask = [uint32]([Math]::Pow(2, hostbits) - 1)   e.g. /24 → 0x000000FF
-#   mask     = [uint32]0xFFFFFFFF - hostmask              e.g.     → 0xFFFFFF00
-#   broadcast = network + hostmask                        (addition, no -bnot)
-#
-# [Math]::Pow returns [double], which is always non-negative — no sign issues.
-# Verified for /0 through /32 on PS 5.1 x64 and PS 7.
+# 
 #
 function Get-SubnetInfo {
     param([string]$IP, [int]$PrefixLength)
@@ -168,13 +151,13 @@ function Get-SubnetInfo {
         $hostMask = [uint32]0
     } else {
         $hostBits = 32 - $PrefixLength
-        # [Math]::Pow returns [double] — always positive, safe to cast to [uint32]
+        # Both computed via [Math]::Pow — no subtraction, no -bnot, no overflow
         $hostMask = [uint32]([Math]::Pow(2, $hostBits) - 1)
-        $mask     = [uint32]0xFFFFFFFF - $hostMask
+        $mask     = [uint32]([Math]::Pow(2, 32) - [Math]::Pow(2, $hostBits))
     }
 
     $network   = [uint32]($ipInt -band $mask)
-    $broadcast = [uint32]($network + $hostMask)    # pure addition — no -bnot
+    $broadcast = [uint32]($network + $hostMask)
 
     $bBytes = [BitConverter]::GetBytes($broadcast)
     [array]::Reverse($bBytes)
